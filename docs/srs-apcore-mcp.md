@@ -4,8 +4,8 @@
 |-------------|--------------------------------------------------------------------------|
 | Title       | apcore-mcp: Automatic MCP Server & OpenAI Tools Bridge                   |
 | Document    | Software Requirements Specification (SRS)                                |
-| Version     | 1.3                                                                      |
-| Date        | 2026-02-27                                                               |
+| Version     | 1.4                                                                      |
+| Date        | 2026-03-02                                                               |
 | Author      | aipartnerup Engineering Team                                             |
 | Status      | Draft                                                                    |
 | PRD Ref     | `docs/prd-apcore-mcp.md` v1.3                                           |
@@ -2515,6 +2515,201 @@ Authenticator.authenticate(headers: dict[str, str]) -> Identity | None
 3. On auth failure, returns 401 JSON with `WWW-Authenticate: Bearer` header.
 4. On auth success, sets `auth_identity_var` ContextVar for identity injection into the execution context.
 5. When no authenticator is configured, tool execution proceeds without authentication.
+
+---
+
+### 3.17 FR-APPROVAL: Approval System Requirements (F-028)
+
+---
+
+#### FR-APPROVAL-001: ElicitationApprovalHandler
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-APPROVAL-001 |
+| **Title** | ElicitationApprovalHandler bridges MCP elicitation to apcore approval system |
+| **Priority** | P2 |
+| **Traces to** | F-028 |
+
+**Description:** `ElicitationApprovalHandler` implements the `ApprovalHandler` protocol. It extracts the MCP elicit callback from `context.data[MCP_ELICIT_KEY]`, builds an approval message containing `moduleId`, `description`, and `arguments`, calls the elicit callback, and maps the response action to an `ApprovalResult`.
+
+**Input/Trigger:** `requestApproval(request: ApprovalRequest)` called by the Executor approval gate.
+
+**Expected Output:**
+- `action == "accept"` → `ApprovalResult(status="approved")`
+- Any other action → `ApprovalResult(status="rejected", reason="User action: {action}")`
+- No context/callback → `ApprovalResult(status="rejected", reason="No context available...")`
+- Callback throws → `ApprovalResult(status="rejected", reason="Elicitation request failed")`
+
+**Boundary Conditions:**
+- `context` is null or missing `data` → returns rejected
+- Elicit callback is absent from `data` → returns rejected
+- Elicit callback returns null → returns rejected
+- `description` is null → substituted with empty string in message
+
+**Error Conditions:** Never throws. All failure paths return rejected `ApprovalResult`.
+
+---
+
+#### FR-APPROVAL-002: Approval Error Codes
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-APPROVAL-002 |
+| **Title** | Three approval error codes added to ERROR_CODES / ErrorCodes |
+| **Priority** | P2 |
+| **Traces to** | F-028 |
+
+**Description:** `APPROVAL_DENIED`, `APPROVAL_TIMEOUT`, `APPROVAL_PENDING` are added to the error code constants. `ErrorMapper` handles each with specific behavior.
+
+**Input/Trigger:** ModuleError with code matching an approval error code.
+
+**Expected Output:**
+- `APPROVAL_PENDING`: Details narrowed to `{"approvalId": ...}` only. If no `approval_id`/`approvalId` in details, details set to null.
+- `APPROVAL_TIMEOUT`: `retryable: true` set on response. Details passed through.
+- `APPROVAL_DENIED`: `reason` extracted from details. If present, details set to `{"reason": ...}`. Otherwise details passed through.
+
+**Boundary Conditions:**
+- `APPROVAL_PENDING` with no `approval_id` key → `details: null`
+- `APPROVAL_DENIED` with no `reason` key → original details passed through
+- AI guidance fields from the error are also extracted and attached
+
+**Error Conditions:** None.
+
+---
+
+#### FR-APPROVAL-003: CLI --approval Flag
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-APPROVAL-003 |
+| **Title** | CLI --approval flag with four modes |
+| **Priority** | P2 |
+| **Traces to** | F-028 |
+
+**Description:** The CLI accepts `--approval <mode>` with choices: `elicit`, `auto-approve`, `always-deny`, `off` (default). The handler is passed to `serve()` as `approval_handler`/`approvalHandler`.
+
+**Input/Trigger:** CLI argument `--approval <mode>`.
+
+**Expected Output:**
+- `elicit` → `ElicitationApprovalHandler()` instance
+- `auto-approve` → `AutoApproveHandler()` from upstream `apcore`/`apcore-js`
+- `always-deny` → `AlwaysDenyHandler()` from upstream `apcore`/`apcore-js`
+- `off` → no handler (undefined/None)
+
+**Boundary Conditions:**
+- Invalid mode value → error with valid choices listed
+- `auto-approve`/`always-deny` when upstream library doesn't export the handler → descriptive error
+
+**Error Conditions:** Exits with error for invalid mode or missing upstream exports.
+
+---
+
+### 3.18 FR-AIGUIDANCE: AI Guidance & Intent Requirements (F-029, F-030, F-031)
+
+---
+
+#### FR-AIGUIDANCE-001: AI Guidance Field Extraction
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-AIGUIDANCE-001 |
+| **Title** | ErrorMapper extracts AI guidance fields from ModuleError and maps to camelCase |
+| **Priority** | P2 |
+| **Traces to** | F-029 |
+
+**Description:** `ErrorMapper._attachAiGuidance()` reads `retryable`, `ai_guidance`, `user_fixable`, `suggestion` from the error object and writes them as `retryable`, `aiGuidance`, `userFixable`, `suggestion` (camelCase) on the MCP error response. Fields that are null/undefined or already set on the response are skipped.
+
+**Input/Trigger:** Any ModuleError processed through `toMcpError()` (except internal/sanitized errors).
+
+**Expected Output:** Non-null AI guidance fields appear as camelCase keys on the response dict/object.
+
+**Boundary Conditions:**
+- All four fields absent → no guidance fields on response
+- Field already set (e.g., `retryable: true` on APPROVAL_TIMEOUT) → not overwritten
+- Python reads snake_case from apcore, writes camelCase. TypeScript reads/writes camelCase.
+
+**Error Conditions:** None.
+
+---
+
+#### FR-AIGUIDANCE-002: AI Guidance in Error Text
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-AIGUIDANCE-002 |
+| **Title** | Router appends AI guidance JSON to error text for agent parsing |
+| **Priority** | P2 |
+| **Traces to** | F-029 |
+
+**Description:** `ExecutionRouter._buildErrorText(errorInfo)` builds a text string from the error message. If any guidance fields are present (`retryable`, `aiGuidance`, `userFixable`, `suggestion`), they are collected into an object and JSON-stringified, then appended to the message with a `\n\n` separator.
+
+**Input/Trigger:** Error response from ErrorMapper passed to `_buildErrorText()`.
+
+**Expected Output:**
+- With guidance: `"Error message\n\n{\"retryable\":true,\"aiGuidance\":\"...\"}"``
+- Without guidance: `"Error message"` (plain, no JSON appendix)
+
+**Boundary Conditions:**
+- Empty guidance object (all fields undefined) → plain message, no JSON
+- Guidance keys use camelCase in both Python and TypeScript output
+
+**Error Conditions:** None.
+
+---
+
+#### FR-AIGUIDANCE-003: AI Intent Metadata in Tool Descriptions
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-AIGUIDANCE-003 |
+| **Title** | MCPServerFactory appends AI intent metadata from descriptor.metadata to descriptions |
+| **Priority** | P2 |
+| **Traces to** | F-030 |
+
+**Description:** `MCPServerFactory.buildTool()` reads `descriptor.metadata` for keys `x-when-to-use`, `x-when-not-to-use`, `x-common-mistakes`, `x-workflow-hints`. For each key with a non-empty string value, a labeled line is generated and appended to the tool description.
+
+**Input/Trigger:** `buildTool(descriptor)` where `descriptor.metadata` contains one or more intent keys.
+
+**Expected Output:** Description extended with `\n\n` separator followed by labeled lines:
+```
+Original description
+
+When To Use: ...
+When Not To Use: ...
+Common Mistakes: ...
+Workflow Hints: ...
+```
+
+**Boundary Conditions:**
+- No metadata → description unchanged
+- Non-string values (number, null, array) → silently ignored
+- Empty string values → treated as falsy, ignored
+
+**Error Conditions:** None.
+
+---
+
+#### FR-AIGUIDANCE-004: Streaming Annotation in Description Suffix
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-AIGUIDANCE-004 |
+| **Title** | AnnotationMapper includes streaming field in description suffix |
+| **Priority** | P2 |
+| **Traces to** | F-031 |
+
+**Description:** `AnnotationMapper.toDescriptionSuffix()` includes `streaming=true` when `annotations.streaming` differs from the default value (`false`). The `streaming` field is added to the defaults dict with value `false`.
+
+**Input/Trigger:** `toDescriptionSuffix(annotations)` where `annotations.streaming == true`.
+
+**Expected Output:** `streaming=true` appended to the `[Annotations: ...]` suffix.
+
+**Boundary Conditions:**
+- `streaming == false` (default) → not included in suffix
+- `annotations == null` → empty string returned (unchanged behavior)
+
+**Error Conditions:** None.
 
 ---
 

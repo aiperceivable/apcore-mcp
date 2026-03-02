@@ -3,8 +3,8 @@
 | Field       | Value                                                        |
 |-------------|--------------------------------------------------------------|
 | Title       | apcore-mcp Test Plan & Test Cases                            |
-| Version     | 1.3                                                          |
-| Date        | 2026-02-27                                                   |
+| Version     | 1.4                                                          |
+| Date        | 2026-03-02                                                   |
 | Author      | aipartnerup QA Team                                          |
 | Status      | Draft                                                        |
 | PRD Ref     | `docs/prd-apcore-mcp.md` v1.3                               |
@@ -2785,6 +2785,79 @@ Uses real apcore modules from `examples/extensions/` (greeting, math_calc, text_
 | TC-AUTH-INT-016 | Explorer POST `/explorer/tools/<name>/call` returns 401 without token when authenticator configured | P0 | FR-AUTH-007 |
 | TC-AUTH-INT-017 | Explorer POST `/explorer/tools/<name>/call` sets identity with valid token | P0 | FR-AUTH-007 |
 | TC-AUTH-INT-018 | Explorer GET endpoints remain exempt even with custom `exempt_paths` | P1 | FR-AUTH-003, FR-AUTH-007 |
+
+---
+
+## 9c. Approval System Test Cases (TC-APPROVAL-xxx)
+
+### Unit Tests: ElicitationApprovalHandler (TC-APPROVAL-001 to TC-APPROVAL-009)
+
+| ID | Description | Input | Expected Result | Traces to |
+|----|-------------|-------|-----------------|-----------|
+| TC-APPROVAL-001 | Null context returns rejected | `context: null` | `{status: "rejected", reason: "No context..."}` | FR-APPROVAL-001 |
+| TC-APPROVAL-002 | Missing context.data returns rejected | `context: {}` | `{status: "rejected", reason: "No context..."}` | FR-APPROVAL-001 |
+| TC-APPROVAL-003 | Missing elicit callback returns rejected | `context: {data: {}}` | `{status: "rejected", reason: "No elicitation callback..."}` | FR-APPROVAL-001 |
+| TC-APPROVAL-004 | Accept action returns approved | Callback returns `{action: "accept"}` | `{status: "approved"}` | FR-APPROVAL-001 |
+| TC-APPROVAL-005 | Decline action returns rejected | Callback returns `{action: "decline"}` | `{status: "rejected", reason: "User action: decline"}` | FR-APPROVAL-001 |
+| TC-APPROVAL-006 | Cancel action returns rejected | Callback returns `{action: "cancel"}` | `{status: "rejected", reason: "User action: cancel"}` | FR-APPROVAL-001 |
+| TC-APPROVAL-007 | Null callback response returns rejected | Callback returns `null` | `{status: "rejected", reason: "...no response"}` | FR-APPROVAL-001 |
+| TC-APPROVAL-008 | Callback throws returns rejected | Callback raises error | `{status: "rejected", reason: "...failed"}` | FR-APPROVAL-001 |
+| TC-APPROVAL-009 | checkApproval returns rejected (Phase B) | Any approvalId | `{status: "rejected", reason: "Phase B not supported..."}` | FR-APPROVAL-001 |
+
+### Unit Tests: Approval Error Codes (TC-APPROVAL-010 to TC-APPROVAL-015)
+
+| ID | Description | Input | Expected Result | Traces to |
+|----|-------------|-------|-----------------|-----------|
+| TC-APPROVAL-010 | APPROVAL_PENDING narrows to approvalId | Error with `{approval_id: "abc"}` | `details: {approvalId: "abc"}` | FR-APPROVAL-002 |
+| TC-APPROVAL-011 | APPROVAL_PENDING snake_case fallback (TS) | Error with `{approval_id: "xyz"}` | `details: {approvalId: "xyz"}` | FR-APPROVAL-002 |
+| TC-APPROVAL-012 | APPROVAL_PENDING without ID → null details | Error with `{other: "data"}` | `details: null` | FR-APPROVAL-002 |
+| TC-APPROVAL-013 | APPROVAL_TIMEOUT marked retryable | Error code APPROVAL_TIMEOUT | `retryable: true` | FR-APPROVAL-002 |
+| TC-APPROVAL-014 | APPROVAL_DENIED extracts reason | Error with `{reason: "Denied"}` | `details: {reason: "Denied"}` | FR-APPROVAL-002 |
+| TC-APPROVAL-015 | APPROVAL_DENIED without reason passes through | Error with `{other: "data"}` | `details: {other: "data"}` | FR-APPROVAL-002 |
+
+### Unit Tests: CLI --approval Flag (TC-APPROVAL-016 to TC-APPROVAL-018)
+
+| ID | Description | Input | Expected Result | Traces to |
+|----|-------------|-------|-----------------|-----------|
+| TC-APPROVAL-016 | Invalid --approval mode fails | `--approval invalid` | Error with valid modes listed | FR-APPROVAL-003 |
+| TC-APPROVAL-017 | --approval elicit passes handler | `--approval elicit` | `approvalHandler` defined in serve() options | FR-APPROVAL-003 |
+| TC-APPROVAL-018 | --approval off (default) no handler | No --approval flag | `approvalHandler` is undefined/None | FR-APPROVAL-003 |
+
+---
+
+## 9d. AI Guidance & Intent Test Cases (TC-AIGUIDANCE-xxx)
+
+### Unit Tests: AI Guidance Field Extraction (TC-AIGUIDANCE-001 to TC-AIGUIDANCE-004)
+
+| ID | Description | Input | Expected Result | Traces to |
+|----|-------------|-------|-----------------|-----------|
+| TC-AIGUIDANCE-001 | All four guidance fields extracted | Error with retryable, ai_guidance, user_fixable, suggestion | All four appear as camelCase on response | FR-AIGUIDANCE-001 |
+| TC-AIGUIDANCE-002 | Absent fields not attached | Error without guidance fields | No guidance keys on response | FR-AIGUIDANCE-001 |
+| TC-AIGUIDANCE-003 | Schema validation with guidance | SCHEMA_VALIDATION_ERROR + suggestion | `suggestion` on response | FR-AIGUIDANCE-001 |
+| TC-AIGUIDANCE-004 | Pre-set retryable not overwritten | APPROVAL_TIMEOUT (retryable=true) + error.retryable=false | `retryable: true` (not overwritten) | FR-AIGUIDANCE-001 |
+
+### Unit Tests: AI Guidance in Error Text (TC-AIGUIDANCE-005 to TC-AIGUIDANCE-006)
+
+| ID | Description | Input | Expected Result | Traces to |
+|----|-------------|-------|-----------------|-----------|
+| TC-AIGUIDANCE-005 | Guidance JSON appended to error text | Error with retryable + aiGuidance | Text contains message + `\n\n` + JSON with both fields | FR-AIGUIDANCE-002 |
+| TC-AIGUIDANCE-006 | Plain message without guidance | Error without guidance | Text is plain message, no JSON appendix | FR-AIGUIDANCE-002 |
+
+### Unit Tests: AI Intent Metadata (TC-AIGUIDANCE-007 to TC-AIGUIDANCE-010)
+
+| ID | Description | Input | Expected Result | Traces to |
+|----|-------------|-------|-----------------|-----------|
+| TC-AIGUIDANCE-007 | All four intent keys appended | Metadata with all x-* keys | Description contains all labeled lines | FR-AIGUIDANCE-003 |
+| TC-AIGUIDANCE-008 | No metadata → description unchanged | No metadata on descriptor | Description equals original | FR-AIGUIDANCE-003 |
+| TC-AIGUIDANCE-009 | Partial metadata | Only x-when-to-use present | Only "When To Use" appended | FR-AIGUIDANCE-003 |
+| TC-AIGUIDANCE-010 | Non-string values ignored | Metadata with number/null values | Description unchanged | FR-AIGUIDANCE-003 |
+
+### Unit Tests: Streaming Annotation (TC-AIGUIDANCE-011 to TC-AIGUIDANCE-012)
+
+| ID | Description | Input | Expected Result | Traces to |
+|----|-------------|-------|-----------------|-----------|
+| TC-AIGUIDANCE-011 | streaming=true included in suffix | `annotations.streaming = true` | Suffix contains `streaming=true` | FR-AIGUIDANCE-004 |
+| TC-AIGUIDANCE-012 | streaming=false (default) excluded | `annotations.streaming = false` | Empty suffix or no streaming field | FR-AIGUIDANCE-004 |
 
 ---
 

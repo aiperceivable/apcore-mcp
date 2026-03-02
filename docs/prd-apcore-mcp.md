@@ -3,8 +3,8 @@
 | Field       | Value                                                        |
 |-------------|--------------------------------------------------------------|
 | Title       | apcore-mcp: Automatic MCP Server & OpenAI Tools Bridge       |
-| Version     | 1.3                                                          |
-| Date        | 2026-02-27                                                   |
+| Version     | 1.4                                                          |
+| Date        | 2026-03-02                                                   |
 | Author      | aipartnerup Product Team                                     |
 | Status      | Draft                                                        |
 | Reviewers   | apcore Core Maintainers, Community Contributors              |
@@ -804,14 +804,100 @@ This feature bridges the gap between HTTP-level authentication and apcore's modu
 
 ---
 
+#### F-028: Runtime Approval System via MCP Elicitation
+
+**Title:** Bridges MCP elicitation to apcore's runtime approval system for human-in-the-loop tool execution
+
+**Description:** Modules annotated with `requires_approval=True` trigger an approval gate before execution. The `ElicitationApprovalHandler` uses the MCP elicitation protocol to present approval requests to the human user via the MCP client. The user can accept or reject the request, and the result is mapped to an `ApprovalResult` that controls whether execution proceeds. Built-in handlers (`AutoApproveHandler`, `AlwaysDenyHandler`) are available for dev/testing scenarios via the upstream `apcore` library.
+
+Three new error codes (`APPROVAL_DENIED`, `APPROVAL_TIMEOUT`, `APPROVAL_PENDING`) enable structured error handling for approval-related failures, each with specific behavior: `APPROVAL_TIMEOUT` is marked auto-retryable, `APPROVAL_PENDING` narrows response details to `approvalId` only, and `APPROVAL_DENIED` extracts the denial reason.
+
+**User Story:** As an AI agent platform operator, I want modules that modify production data to require human approval before execution, so that I can enforce a human-in-the-loop safety net without changing module code.
+
+**Acceptance Criteria:**
+1. `serve()` accepts an optional `approval_handler` parameter. When provided, the handler is passed to the `Executor` constructor for automatic wiring.
+2. `ElicitationApprovalHandler` implements the `ApprovalHandler` protocol from `apcore`, bridging MCP elicitation to the approval system.
+3. `requestApproval()` extracts the elicit callback from `context.data`, builds an approval message containing module ID, description, and arguments, and maps the elicit response (`accept` → approved, anything else → rejected).
+4. `checkApproval()` returns rejected with "Phase B not supported" since MCP elicitation is stateless.
+5. CLI provides `--approval` flag with choices: `elicit` (uses `ElicitationApprovalHandler`), `auto-approve` (uses `apcore.AutoApproveHandler`), `always-deny` (uses `apcore.AlwaysDenyHandler`), `off` (default, no approval).
+6. Error codes `APPROVAL_DENIED`, `APPROVAL_TIMEOUT`, `APPROVAL_PENDING` are added to the error constants.
+7. `ErrorMapper` handles approval errors with specific behavior: `APPROVAL_TIMEOUT` sets `retryable=true`, `APPROVAL_PENDING` narrows details to `approvalId`, `APPROVAL_DENIED` extracts `reason` from details.
+8. `ElicitationApprovalHandler`, `ApprovalRequest`, and `ApprovalResult` are exported from the public API.
+9. Graceful degradation: when `apcore-js` (TypeScript) does not yet export approval handlers, `--approval auto-approve`/`--approval always-deny` fails with a descriptive error.
+10. The `--approval elicit` mode works independently of the upstream library's approval system (only requires the MCP elicit callback in context).
+
+**Priority:** P2
+
+---
+
+#### F-029: Enhanced Error Responses with AI Guidance
+
+**Title:** Structured AI guidance fields on error responses for intelligent agent retry and fix behavior
+
+**Description:** When an `apcore` `ModuleError` carries optional AI guidance attributes (`retryable`, `ai_guidance`, `user_fixable`, `suggestion`), the `ErrorMapper` extracts these and attaches them to the MCP error response. The `ExecutionRouter` then appends these fields as a structured JSON block after the error message text, enabling AI agents to parse retry hints, fix suggestions, and user-action recommendations from error responses.
+
+The wire format uses camelCase (`retryable`, `aiGuidance`, `userFixable`, `suggestion`) to match MCP convention. Python reads snake_case attributes from `apcore` errors and maps to camelCase on output. TypeScript uses camelCase throughout.
+
+**User Story:** As an AI agent consuming MCP tools, I want error responses to include structured hints about whether I should retry, what I should fix, or what the user should do, so that I can handle errors intelligently instead of giving up.
+
+**Acceptance Criteria:**
+1. `ErrorMapper` extracts `retryable`, `ai_guidance`/`aiGuidance`, `user_fixable`/`userFixable`, and `suggestion` from `ModuleError` instances.
+2. Non-null/non-undefined values are attached to the MCP error response dict/object as camelCase keys.
+3. Fields already set on the response (e.g., `retryable: true` for `APPROVAL_TIMEOUT`) are not overwritten.
+4. `ExecutionRouter._buildErrorText()` builds a JSON appendix of guidance fields and appends it to the error message text with a `\n\n` separator.
+5. When no guidance fields are present, the error text is the plain message with no JSON appendix.
+6. The wire format is identical between Python and TypeScript implementations (camelCase keys in JSON output).
+
+**Priority:** P2
+
+---
+
+#### F-030: AI Intent Metadata in Tool Descriptions
+
+**Title:** Append AI intent annotations from module metadata to MCP tool descriptions for agent visibility
+
+**Description:** Module authors can annotate their modules with AI intent metadata via `descriptor.metadata` using extension keys: `x-when-to-use`, `x-when-not-to-use`, `x-common-mistakes`, `x-workflow-hints`. When present, `MCPServerFactory.buildTool()` appends these as labeled lines after the base description, giving AI agents richer context about when and how to use each tool.
+
+**User Story:** As a module author, I want to embed usage hints directly in my module metadata so that AI agents can make better decisions about when to call my tool and avoid common mistakes, without modifying the core description.
+
+**Acceptance Criteria:**
+1. `MCPServerFactory.buildTool()` reads `descriptor.metadata` for keys: `x-when-to-use`, `x-when-not-to-use`, `x-common-mistakes`, `x-workflow-hints`.
+2. For each key with a non-empty string value, a labeled line is generated: e.g., `"x-when-to-use": "..."` → `"When To Use: ..."`.
+3. Labels are derived by stripping the `x-` prefix, replacing hyphens with spaces, and title-casing.
+4. Intent lines are appended to the tool description with a `\n\n` separator, joined by `\n`.
+5. Non-string values (numbers, null, arrays) are silently ignored.
+6. When no intent metadata is present, the description is unchanged.
+
+**Priority:** P2
+
+---
+
+#### F-031: Streaming Annotation in Description Suffix
+
+**Title:** Include `streaming` field in annotation description suffix for AI agent awareness
+
+**Description:** `AnnotationMapper.toDescriptionSuffix()` now includes `streaming=true` in the `[Annotations: ...]` suffix when the module declares streaming capability. The `streaming` field is added to the annotation defaults (`streaming: false`), so it only appears in the suffix when explicitly set to `true`.
+
+**User Story:** As an AI agent, I want to know from the tool description whether a module supports streaming, so that I can decide whether to request a progress token.
+
+**Acceptance Criteria:**
+1. `streaming: false` is added to the annotation defaults.
+2. When `annotations.streaming` differs from the default (i.e., is `true`), `streaming=true` is included in the description suffix.
+3. When `streaming` equals the default (`false`), it is not included in the suffix.
+4. The streaming annotation appears after the existing annotation fields in the suffix.
+
+**Priority:** P2
+
+---
+
 **Feature Count Summary:**
 
 | Priority | Count | Features |
 |----------|-------|----------|
 | P0       | 9     | F-001 through F-009 |
 | P1       | 7     | F-010 through F-016 |
-| P2       | 11    | F-017 through F-027 |
-| **Total**| **27**|                      |
+| P2       | 15    | F-017 through F-031 |
+| **Total**| **31**|                      |
 
 ---
 

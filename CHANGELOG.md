@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-03-02
+
+### Added
+- Approval system feature specification (F-028): runtime approval via `ElicitationApprovalHandler`, `--approval` CLI flag with modes `elicit`, `auto-approve`, `always-deny`, `off`
+- Approval error codes: `APPROVAL_DENIED`, `APPROVAL_TIMEOUT`, `APPROVAL_PENDING`
+- Enhanced error responses with AI guidance fields (`retryable`, `ai_guidance`/`aiGuidance`, `user_fixable`/`userFixable`, `suggestion`)
+- AI intent metadata in tool descriptions (`x-when-to-use`, `x-when-not-to-use`, `x-common-mistakes`, `x-workflow-hints`)
+- Streaming annotation in description suffixes
+
+### Changed
+- Cross-language naming convention documented: Python uses snake_case (`ai_guidance`), TypeScript uses camelCase (`aiGuidance`) for AI guidance fields
+
+## [0.7.0] - 2026-02-28
+
+### Added
+- JWT Authentication feature specification (F-027) — key file support, configurable strictness, path exemptions, audit logging
+
+## [0.6.0] - 2026-02-25
+
+### Added
+- Streaming bridge specification — progress notifications, chunk accumulation, fallback to non-streaming
+- Elicitation support specification — user input requests during module execution
+- Dynamic tool registration specification
+
+## [0.5.0] - 2026-02-25
+
+### Added
+- MCP Tool Explorer specification — browser-based UI for inspecting and testing tools
+- Examples specification — cross-language standard for demo modules
+
 ## [0.4.0] - 2026-02-27
 
 ### Added

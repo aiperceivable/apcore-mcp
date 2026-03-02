@@ -3,8 +3,8 @@
 | Field       | Value                                                                    |
 |-------------|--------------------------------------------------------------------------|
 | Title       | apcore-mcp: Automatic MCP Server & OpenAI Tools Bridge                   |
-| Version     | 1.3                                                                      |
-| Date        | 2026-02-27                                                               |
+| Version     | 1.4                                                                      |
+| Date        | 2026-03-02                                                               |
 | Author      | aipartnerup Engineering Team                                             |
 | Status      | Draft                                                                    |
 | Reviewers   | apcore Core Maintainers, Community Contributors                          |
@@ -1749,6 +1749,120 @@ This separation ensures browsing is frictionless while execution remains secured
 - The `Authenticator` Protocol maps to a TypeScript `interface` or Go `interface`.
 - `ClaimMapping` maps to a plain options object / struct in other languages.
 - The ASGI middleware pattern maps to Express middleware (TypeScript) or `http.Handler` wrapping (Go).
+
+---
+
+### 6.12 Approval Handler (F-028)
+
+**File:** `src/apcore_mcp/adapters/approval.py` (Python) / `src/adapters/approval.ts` (TypeScript)
+
+**Responsibility:** Bridges MCP elicitation to apcore's runtime approval system, enabling human-in-the-loop tool execution for modules annotated with `requires_approval=True`.
+
+**Public API:**
+
+| Method | Signature | Return |
+|--------|-----------|--------|
+| `requestApproval` | `(request: ApprovalRequest) -> ApprovalResult` | Approved or rejected |
+| `checkApproval` | `(approvalId: string) -> ApprovalResult` | Always rejected (Phase B unsupported) |
+
+**Design Decisions:**
+
+1. **MCP elicitation as approval channel:** The handler reuses the existing MCP elicit callback (`context.data[MCP_ELICIT_KEY]`) rather than implementing a custom approval protocol. This means approval works with any MCP client that supports elicitation.
+
+2. **Stateless design:** Each `requestApproval()` call is independent. `checkApproval()` (Phase B / async polling) always returns rejected because MCP elicitation is request-response, not stateful.
+
+3. **Graceful degradation:** When context, data, or the elicit callback is missing, the handler returns rejected with a descriptive reason rather than throwing.
+
+**Approval Flow:**
+
+```
+MCP Client → tools/call → ExecutionRouter → Executor
+                                              ↓ (Step 4.5: approval gate)
+                                         ApprovalHandler.requestApproval()
+                                              ↓
+                                    ElicitationApprovalHandler
+                                              ↓
+                                    context.data[MCP_ELICIT_KEY](message)
+                                              ↓
+                                     MCP elicitation/create → Client UI
+                                              ↓
+                                    action: "accept" → ApprovalResult(approved)
+                                    action: other    → ApprovalResult(rejected)
+```
+
+**Error Code Handling in ErrorMapper:**
+
+| Error Code | Behavior | Wire Format |
+|------------|----------|-------------|
+| `APPROVAL_PENDING` | Narrow details to `{approvalId}` only | `{"approvalId": "..."}` |
+| `APPROVAL_TIMEOUT` | Set `retryable: true` | AI agents should retry |
+| `APPROVAL_DENIED` | Extract `reason` from details | `{"reason": "..."}` |
+
+**Integration with `serve()`:** The `approval_handler`/`approvalHandler` parameter on `serve()` is passed through `resolveExecutor()` to the `Executor` constructor. When the user passes an existing `Executor` instance (not a bare `Registry`), the approval handler is not wired (the caller is responsible for configuring the Executor).
+
+**CLI Integration:** `--approval <mode>` creates the appropriate handler:
+- `elicit` → `ElicitationApprovalHandler()` (from apcore-mcp)
+- `auto-approve` → `AutoApproveHandler()` (from upstream apcore/apcore-js)
+- `always-deny` → `AlwaysDenyHandler()` (from upstream apcore/apcore-js)
+- `off` → no handler
+
+**Cross-Language Notes:**
+- Python: `ElicitationApprovalHandler` extends `apcore.approval.ApprovalHandler` (Protocol).
+- TypeScript: Standalone class (duck-typed), does not extend a base class since `apcore-js` may not yet export `ApprovalHandler`.
+- Both produce identical `ApprovalResult` structures with the same status values.
+
+---
+
+### 6.13 AI Guidance & Intent Metadata (F-029, F-030, F-031)
+
+**Files:**
+- `src/apcore_mcp/adapters/errors.py` / `src/adapters/errors.ts` — AI guidance extraction
+- `src/apcore_mcp/server/router.py` / `src/server/router.ts` — AI guidance in error text
+- `src/apcore_mcp/server/factory.py` / `src/server/factory.ts` — AI intent metadata
+- `src/apcore_mcp/adapters/annotations.py` / `src/adapters/annotations.ts` — Streaming suffix
+
+**6.13.1 AI Guidance Field Extraction**
+
+The `ErrorMapper` extracts four optional fields from `ModuleError` and maps them to camelCase on the MCP response:
+
+| apcore attribute (Python) | apcore attribute (TypeScript) | MCP wire key |
+|---------------------------|-------------------------------|-------------|
+| `error.retryable` | `error.retryable` | `retryable` |
+| `error.ai_guidance` | `error.aiGuidance` | `aiGuidance` |
+| `error.user_fixable` | `error.userFixable` | `userFixable` |
+| `error.suggestion` | `error.suggestion` | `suggestion` |
+
+Python implementation uses a `dict[str, str]` mapping from source field to destination key. TypeScript uses the camelCase names directly since `apcore-js` will use camelCase natively.
+
+**Design Decision:** The wire format uses camelCase to match MCP convention (`readOnlyHint`, `destructiveHint`, etc.). This was a deliberate choice to ensure consistent JSON output across Python and TypeScript servers, so AI agents can parse the same field names regardless of which implementation they connect to.
+
+**6.13.2 AI Guidance in Error Text**
+
+`ExecutionRouter._buildErrorText(errorInfo)` produces:
+```
+{error message}
+
+{"retryable":true,"aiGuidance":"Try again with a longer timeout"}
+```
+
+The JSON appendix only appears when at least one guidance field is present. This keeps plain errors clean while enriching guided errors for AI agents that parse the text content.
+
+**6.13.3 AI Intent Metadata**
+
+`MCPServerFactory.buildTool()` reads four extension keys from `descriptor.metadata`:
+
+| Metadata Key | Label in Description |
+|-------------|---------------------|
+| `x-when-to-use` | When To Use |
+| `x-when-not-to-use` | When Not To Use |
+| `x-common-mistakes` | Common Mistakes |
+| `x-workflow-hints` | Workflow Hints |
+
+These are appended to the tool description as labeled lines, giving AI agents richer context about tool usage. Only string values are processed; non-string values are silently ignored.
+
+**6.13.4 Streaming Annotation**
+
+`AnnotationMapper.toDescriptionSuffix()` now includes `streaming=true` in the `[Annotations: ...]` suffix when `annotations.streaming` differs from the default (`false`). This enables AI agents to detect streaming capability from the tool description.
 
 ---
 
