@@ -10,9 +10,9 @@ Automatic MCP Server & OpenAI Tools Bridge for apcore.
 
 ```
 ┌──────────────────┐
-│  comfyui-apcore  │  ← your existing apcore project (unchanged)
-│  robotics-apcore │
-│  audio-apcore    │
+│  django-apcore   │  ← your existing apcore project (unchanged)
+│  nestjs-apcore   │
+│  tiptap-apcore   │
 │  ...             │
 └────────┬─────────┘
          │  extensions directory
