@@ -94,6 +94,11 @@ apcore-mcp (separate process / library call)
 | TypeScript | [apcore-mcp-typescript](https://github.com/aipartnerup/apcore-mcp-typescript) | `npm install apcore-mcp` |  ✅  v0.1.0 |
 | Go | apcore-mcp-go | — | Planned |
 
+## Documentation
+
+For full documentation, including Quick Start guides for Python and TypeScript, visit:
+**[https://aipartnerup.github.io/apcore-mcp/](https://aipartnerup.github.io/apcore-mcp/)**
+
 ## Specification Documents
 
 - [Product Requirements (PRD)](docs/prd-apcore-mcp.md)
