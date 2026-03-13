@@ -39,12 +39,20 @@ Automatic MCP Server & OpenAI Tools Bridge for apcore.
 
 - **Auto-discovery** — all modules in the extensions directory are found and exposed automatically
 - **Three transports** — stdio (default, for desktop clients), Streamable HTTP, and SSE
-- **Annotation mapping** — apcore annotations (readonly, destructive, idempotent, cacheable, paginated) map to MCP ToolAnnotations
+- **Embeddable server** — `async_serve()` / `asyncServe()` returns an ASGI/HTTP handler for mounting in larger applications
+- **JWT authentication** — optional Bearer token auth for HTTP transports with permissive mode and path exemptions
+- **Approval mechanism** — runtime approval via MCP elicitation, auto-approve, or always-deny handlers
+- **AI guidance** — error responses include `retryable`, `ai_guidance`, `suggestion` fields for agent consumption
+- **AI intent metadata** — tool descriptions enriched with `x-when-to-use`, `x-when-not-to-use`, `x-common-mistakes` from module metadata
+- **Streaming bridge** — progress notifications and deep merge chunk accumulation for streaming tool execution
+- **Annotation mapping** — apcore annotations (readonly, destructive, idempotent, cacheable, paginated, streaming) map to MCP ToolAnnotations
 - **Schema conversion** — JSON Schema `$ref`/`$defs` inlining, strict mode for OpenAI Structured Outputs
 - **Error sanitization** — ACL errors and internal errors are sanitized; stack traces are never leaked
 - **Dynamic registration** — modules registered/unregistered at runtime are reflected immediately
 - **Dual output** — same registry powers both MCP Server and OpenAI tool definitions
-- **Tool Explorer** — optional built-in browser UI for exploring and testing MCP tools (like Swagger UI for MCP)
+- **Output formatting** — customizable tool output (JSON default, Markdown via apcore-toolkit, or custom formatter)
+- **Extension helpers** — modules can call `report_progress()` and `elicit()` during execution
+- **Tool Explorer** — browser-based UI for browsing schemas and testing tools interactively (like Swagger UI for MCP)
 
 ## How It Works
 
