@@ -8,6 +8,9 @@
 
 Automatic MCP Server & OpenAI Tools Bridge for apcore.
 
+**Python:** [apcore-mcp-python](https://github.com/aipartnerup/apcore-mcp-python) · `pip install apcore-mcp`
+**TypeScript:** [apcore-mcp-typescript](https://github.com/aipartnerup/apcore-mcp-typescript) · `npm install apcore-mcp`
+
 **apcore-mcp** turns any [apcore](https://github.com/aipartnerup/apcore)-based project into an MCP Server and OpenAI tool provider — with **zero code changes** to your existing project.
 
 ```
@@ -107,7 +110,7 @@ apcore-mcp (separate process / library call)
 |----------|-----------|---------|--------|
 | Python | [apcore-mcp-python](https://github.com/aipartnerup/apcore-mcp-python) | `pip install apcore-mcp` |  ✅  v0.9.0 |
 | TypeScript | [apcore-mcp-typescript](https://github.com/aipartnerup/apcore-mcp-typescript) | `npm install apcore-mcp` |  ✅  v0.9.0 |
-| Go | apcore-mcp-go | — | Planned |
+| Rust | apcore-mcp-go | — | Planned |
 
 ## Documentation
 
