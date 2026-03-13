@@ -4,6 +4,8 @@
 
 # apcore-mcp
 
+> **Build once, invoke by Code or AI.**
+
 Automatic MCP Server & OpenAI Tools Bridge for apcore.
 
 **apcore-mcp** turns any [apcore](https://github.com/aipartnerup/apcore)-based project into an MCP Server and OpenAI tool provider — with **zero code changes** to your existing project.
@@ -37,7 +39,7 @@ Automatic MCP Server & OpenAI Tools Bridge for apcore.
 
 - **Auto-discovery** — all modules in the extensions directory are found and exposed automatically
 - **Three transports** — stdio (default, for desktop clients), Streamable HTTP, and SSE
-- **Annotation mapping** — apcore annotations (readonly, destructive, idempotent) map to MCP ToolAnnotations
+- **Annotation mapping** — apcore annotations (readonly, destructive, idempotent, cacheable, paginated) map to MCP ToolAnnotations
 - **Schema conversion** — JSON Schema `$ref`/`$defs` inlining, strict mode for OpenAI Structured Outputs
 - **Error sanitization** — ACL errors and internal errors are sanitized; stack traces are never leaked
 - **Dynamic registration** — modules registered/unregistered at runtime are reflected immediately
@@ -57,6 +59,11 @@ Automatic MCP Server & OpenAI Tools Bridge for apcore.
 | `annotations.destructive` | `ToolAnnotations.destructiveHint` |
 | `annotations.idempotent` | `ToolAnnotations.idempotentHint` |
 | `annotations.open_world` | `ToolAnnotations.openWorldHint` |
+| `annotations.cacheable` | `ToolAnnotations._meta.cacheable` |
+| `annotations.cache_ttl` | `ToolAnnotations._meta.cacheTtl` |
+| `annotations.paginated` | `ToolAnnotations._meta.paginated` |
+| `metadata.x-preconditions` | `ToolAnnotations._meta.preconditions` |
+| `metadata.x-cost-per-call` | `ToolAnnotations._meta.costPerCall` |
 
 ### Mapping: apcore to OpenAI Tools
 
@@ -90,8 +97,8 @@ apcore-mcp (separate process / library call)
 
 | Language | Repository | Package | Status |
 |----------|-----------|---------|--------|
-| Python | [apcore-mcp-python](https://github.com/aipartnerup/apcore-mcp-python) | `pip install apcore-mcp` |  ✅  v0.1.0 |
-| TypeScript | [apcore-mcp-typescript](https://github.com/aipartnerup/apcore-mcp-typescript) | `npm install apcore-mcp` |  ✅  v0.1.0 |
+| Python | [apcore-mcp-python](https://github.com/aipartnerup/apcore-mcp-python) | `pip install apcore-mcp` |  ✅  v0.9.0 |
+| TypeScript | [apcore-mcp-typescript](https://github.com/aipartnerup/apcore-mcp-typescript) | `npm install apcore-mcp` |  ✅  v0.9.0 |
 | Go | apcore-mcp-go | — | Planned |
 
 ## Documentation

@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-03-13
+
+### Added
+- `async_serve()` / `asyncServe()` function specification for embedding MCP in larger ASGI/HTTP applications
+- `ExecutionCancelledError` mapping with `retryable=True` AI guidance
+- `output_formatter` parameter for customizable tool output (e.g., Markdown via apcore-toolkit)
+- Deep merge streaming accumulation with depth limit (32) for chunked responses
+- New annotation fields in ModuleAnnotations: `streaming`, `cacheable`, `paginated`, `cache_ttl`, `cache_key_fields`, `pagination_style`
+- FR-SERVER-012: async_serve() embeddable ASGI application
+- FR-ERROR-012: ExecutionCancelledError mapping
+
+### Changed
+- Updated SRS to v1.5 with full `serve()` signature including all parameters added since v0.5.0 (explorer, auth, approval, metrics, output_formatter)
+- Bumped minimum Python version from >= 3.10 to >= 3.11 (aligns with apcore-python pyproject.toml)
+- Bumped minimum apcore dependency from >= 0.2.0 to >= 0.13.0 (required for new annotation fields and ExecutionCancelledError)
+- Updated implementation versions in README: Python and TypeScript both at v0.9.0
+- Requirement count increased from 104 to 106 (86 FRs + 20 NFRs)
+
+## [0.9.0] - 2026-03-07
+
+### Changed
+- Replaced the anemone logo in `apcore-mcp-logo.svg` with a new jellyfish mascot; moved the original anemone design to `apcore-mcp-image.svg`
+
 ## [0.8.1] - 2026-03-03
 
 ### Added
@@ -13,7 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - "Configuration Reference" detailing CLI arguments and programmatic API options for both languages
 - Cross-links to the unified documentation site in root, Python, and TypeScript READMEs
 
-## [0.8.0] - 2026-03-02
+## [0.8.0] - 2026-03-06
 
 ### Added
 - Approval system feature specification (F-028): runtime approval via `ElicitationApprovalHandler`, `--approval` CLI flag with modes `elicit`, `auto-approve`, `always-deny`, `off`

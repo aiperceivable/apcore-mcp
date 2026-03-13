@@ -63,6 +63,44 @@ The `serve` function launches the MCP server. It accepts a Registry or Executor 
     });
     ```
 
+### `async_serve()` Options
+
+The `async_serve` function returns an embeddable ASGI application (Starlette) for mounting within a larger server. It accepts the same options as `serve()` except `transport`, `host`, and `port`.
+
+=== "Python"
+
+    ```python
+    from apcore_mcp import async_serve
+
+    async with async_serve(
+        registry_or_executor,
+        name="apcore-mcp",
+        explorer=True,
+        allow_execute=True,
+        authenticator=None,
+        approval_handler=None,
+        output_formatter=None,       # Callable[[dict], str] or None (default: json.dumps)
+    ) as app:
+        # Mount `app` in your ASGI server (e.g., uvicorn)
+        ...
+    ```
+
+=== "TypeScript"
+
+    ```typescript
+    import { asyncServe } from "apcore-mcp";
+
+    const { handler, close } = await asyncServe(registryOrExecutor, {
+      name: "apcore-mcp",
+      explorer: true,
+      allowExecute: true,
+      authenticator: undefined,
+      approvalHandler: undefined,
+      outputFormatter: undefined,    // (result: object) => string, or undefined
+    });
+    // Use `handler` with http.createServer(), call `close()` when done
+    ```
+
 ### `to_openai_tools()` Options
 
 Converts apcore modules into OpenAI-compatible tool definitions.
@@ -119,6 +157,65 @@ For HTTP-based transports, you can secure your endpoints using JWT Bearer tokens
     await serve(registry, {
       transport: "streamable-http",
       authenticator,
+    });
+    ```
+
+## Approval Mechanism
+
+You can gate destructive or sensitive tool calls behind user approval using the `--approval` CLI flag or the `approval_handler` parameter.
+
+**CLI modes:**
+
+| Mode | Behavior |
+|------|----------|
+| `elicit` | Prompts user via MCP elicitation (default for interactive clients) |
+| `auto-approve` | Approves all requests automatically |
+| `always-deny` | Denies all approval requests |
+| `off` | Disables approval checks entirely |
+
+=== "Python"
+
+    ```python
+    from apcore_mcp import serve
+    from apcore_mcp.adapters import ElicitationApprovalHandler
+
+    handler = ElicitationApprovalHandler()
+    await serve(registry, approval_handler=handler)
+    ```
+
+=== "TypeScript"
+
+    ```typescript
+    import { serve, ElicitationApprovalHandler } from "apcore-mcp";
+
+    const handler = new ElicitationApprovalHandler();
+    await serve(registry, { approvalHandler: handler });
+    ```
+
+## Output Formatting
+
+By default, tool results are serialized as JSON. You can pass a custom `output_formatter` to format results differently (e.g., Markdown).
+
+=== "Python"
+
+    ```python
+    from apcore_mcp import serve
+
+    # Custom formatter example
+    await serve(registry, output_formatter=lambda result: json.dumps(result, indent=2))
+
+    # Or use apcore-toolkit for Markdown (optional dependency)
+    from apcore_toolkit import to_markdown
+    await serve(registry, output_formatter=to_markdown)
+    ```
+
+=== "TypeScript"
+
+    ```typescript
+    import { serve } from "apcore-mcp";
+
+    await serve(registry, {
+      outputFormatter: (result) => JSON.stringify(result, null, 2),
     });
     ```
 

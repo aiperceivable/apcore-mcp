@@ -4,8 +4,8 @@
 |-------------|--------------------------------------------------------------------------|
 | Title       | apcore-mcp: Automatic MCP Server & OpenAI Tools Bridge                   |
 | Document    | Software Requirements Specification (SRS)                                |
-| Version     | 1.4                                                                      |
-| Date        | 2026-03-02                                                               |
+| Version     | 1.5                                                                      |
+| Date        | 2026-03-13                                                               |
 | Author      | aipartnerup Engineering Team                                             |
 | Status      | Draft                                                                    |
 | PRD Ref     | `docs/prd-apcore-mcp.md` v1.3                                           |
@@ -22,6 +22,8 @@
 | 1.1     | 2026-02-23 | aipartnerup Engineering Team | Streaming bridge spec; expanded feature count; updated naming conventions   |
 | 1.2     | 2026-02-25 | aipartnerup Engineering Team | MCP Tool Explorer feature; response key changed from "output" to "result"   |
 | 1.3     | 2026-02-27 | aipartnerup Engineering Team | JWT Authentication (F-027): Authenticator protocol, JWTAuthenticator, AuthMiddleware |
+| 1.4     | 2026-03-02 | aipartnerup Engineering Team | Approval system (F-028), AI guidance fields, AI intent metadata, streaming annotations |
+| 1.5     | 2026-03-13 | aipartnerup Engineering Team | Sync update: async_serve(), ExecutionCancelledError, updated serve() signature, Python >= 3.11, apcore >= 0.13.0, new annotation fields |
 
 ---
 
@@ -44,11 +46,11 @@
 
 ### 1.1 Purpose
 
-This Software Requirements Specification defines the complete functional and non-functional requirements for **apcore-mcp**, an independent Python adapter package that automatically bridges any apcore Module Registry into both a fully functional MCP (Model Context Protocol) Server and OpenAI-compatible tool definitions. This document formalizes 20 of 25 features from the upstream PRD (F-001 through F-020) into traceable, testable requirements organized by component module. P2 features F-021 through F-025 are deferred to a future SRS revision. It serves as the authoritative reference for implementation, testing, and acceptance of apcore-mcp v0.1.0.
+This Software Requirements Specification defines the complete functional and non-functional requirements for **apcore-mcp**, an independent Python adapter package that automatically bridges any apcore Module Registry into both a fully functional MCP (Model Context Protocol) Server and OpenAI-compatible tool definitions. This document formalizes 20 of 25 features from the upstream PRD (F-001 through F-020) into traceable, testable requirements organized by component module. P2 features F-021 through F-025 are deferred to a future SRS revision. It serves as the authoritative reference for implementation, testing, and acceptance of apcore-mcp v0.9.0.
 
 The intended audience includes software engineers implementing apcore-mcp, QA engineers writing test plans, and project stakeholders evaluating feature completeness.
 
-> **Note:** FR-STREAM-001, FR-EXT-001, FR-EXT-002, and FR-EXT-003 are defined in this document but not yet included in the traceability matrix (Section 9). The effective FR count is 82.
+> **Note:** FR-STREAM-001, FR-EXT-001, FR-EXT-002, and FR-EXT-003 are defined in this document but not yet included in the traceability matrix (Section 9). The effective FR count is 84.
 
 ### 1.2 Scope
 
@@ -161,7 +163,7 @@ apcore-mcp is the first adapter in a planned family (apcore-a2a is future). It d
 | C-01 | Must use official `mcp` Python SDK for MCP protocol implementation | MCP protocol is complex; reimplementation is out of scope and error-prone |
 | C-02 | Must use apcore `Executor` for all tool call routing | ACL, validation, and middleware guarantees must be preserved |
 | C-03 | Core logic must not exceed 1,200 lines (excluding tests and docs) | Thin adapter design principle; complexity belongs in apcore-python and mcp SDK |
-| C-04 | Python >= 3.10 required | Aligns with apcore-python minimum; needed for modern type hints and `match` |
+| C-04 | Python >= 3.11 required | Aligns with apcore-python minimum; needed for modern type hints, `match`, and `ExceptionGroup` |
 | C-05 | Authentication bridges to apcore ACL, not replaces it | Optional `JWTAuthenticator` validates tokens at HTTP layer and injects `Identity` into `Context` for the Executor's ACL. No OAuth flows, API key management, or user stores. |
 | C-06 | `to_openai_tools()` must have zero runtime dependency on `openai` package | Maximum interoperability; returns plain dicts |
 
@@ -173,8 +175,8 @@ apcore-mcp is the first adapter in a planned family (apcore-a2a is future). It d
 | A-02 | The `mcp` Python SDK (>= 1.0.0) provides stable APIs for tool registration, transport configuration, and error handling | Assumption |
 | A-03 | MCP clients (Claude Desktop, Cursor) correctly implement the MCP protocol for tool discovery and invocation | Assumption |
 | A-04 | apcore modules produce JSON-serializable output dicts from their `execute()` methods | Assumption |
-| A-05 | Python >= 3.10 is available in the target deployment environment | Assumption |
-| D-01 | `apcore` package >= 0.2.0 | Dependency |
+| A-05 | Python >= 3.11 is available in the target deployment environment | Assumption |
+| D-01 | `apcore` package >= 0.13.0 | Dependency |
 | D-02 | `mcp` package >= 1.0.0 | Dependency |
 | D-03 | `openai` package (optional, not required at runtime) | Dependency |
 
@@ -954,6 +956,27 @@ where each line corresponds to an error entry from `error.details["errors"]`. Ea
 
 ---
 
+#### FR-ERROR-012: Map ExecutionCancelledError to MCP error
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-ERROR-012 |
+| **Title** | Map apcore ExecutionCancelledError to retryable MCP error |
+| **Priority** | P1 |
+| **Traces to** | F-004 |
+
+**Description:** When an `ExecutionCancelledError` is raised during tool execution (e.g., due to streaming cancellation by the client), the `ErrorMapper` shall produce a `CallToolResult` with `isError=True` and text `"Execution was cancelled"`. The AI guidance fields shall include `retryable=True` and `aiGuidance="The execution was cancelled, likely by the client. The operation can be retried."`.
+
+**Input/Trigger:** `ExecutionCancelledError` raised during `Executor.call_async()` or `Executor.stream()`.
+
+**Expected Output:** `CallToolResult(content=[TextContent(type="text", text="Execution was cancelled")], isError=True)` with `_meta.retryable=True`.
+
+**Boundary Conditions:** None.
+
+**Error Conditions:** None.
+
+---
+
 ### 3.5 FR-SERVER: MCP Server Requirements
 
 ---
@@ -1234,6 +1257,30 @@ where each line corresponds to an error entry from `error.details["errors"]`. Ea
 
 **Error Conditions:**
 - Schema conversion fails for one module: Skip that module, log warning, register remaining modules.
+
+---
+
+#### FR-SERVER-012: async_serve() returns embeddable ASGI application
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-SERVER-012 |
+| **Title** | async_serve() yields a Starlette ASGI app for embedding |
+| **Priority** | P1 |
+| **Traces to** | F-005 |
+
+**Description:** The `async_serve()` function shall be an async context manager that yields a Starlette ASGI application configured with MCP Streamable HTTP transport, Tool Explorer (if enabled), health endpoint, and authentication middleware. The caller is responsible for binding the application to a host and port. This enables embedding apcore-mcp within a larger ASGI application.
+
+**Input/Trigger:** `async with async_serve(registry, explorer=True) as app: ...`
+
+**Expected Output:** A Starlette application instance with all MCP routes mounted. The application is usable until the context manager exits.
+
+**Boundary Conditions:**
+- No transport parameter (always Streamable HTTP for embedded use).
+- All serve() options except `transport`, `host`, `port` are supported.
+
+**Error Conditions:**
+- Invalid registry/executor: `TypeError` raised.
 
 ---
 
@@ -2936,12 +2983,12 @@ Workflow Hints: ...
 | Field | Value |
 |-------|-------|
 | **ID** | NFR-COMPAT-001 |
-| **Title** | Compatible with Python 3.10 and above |
-| **Target** | Python >= 3.10 |
-| **Measurement** | CI test matrix: Python 3.10, 3.11, 3.12, 3.13 |
+| **Title** | Compatible with Python 3.11 and above |
+| **Target** | Python >= 3.11 |
+| **Measurement** | CI test matrix: Python 3.11, 3.12, 3.13 |
 | **Traces to** | PRD Section 8.3 |
 
-**Description:** apcore-mcp shall be compatible with Python 3.10, 3.11, 3.12, and 3.13. The `pyproject.toml` shall declare `requires-python = ">=3.10"`.
+**Description:** apcore-mcp shall be compatible with Python 3.11, 3.12, and 3.13. The `pyproject.toml` shall declare `requires-python = ">=3.11"`.
 
 ---
 
@@ -2950,12 +2997,12 @@ Workflow Hints: ...
 | Field | Value |
 |-------|-------|
 | **ID** | NFR-COMPAT-002 |
-| **Title** | Compatible with apcore-python >= 0.2.0 |
-| **Target** | apcore >= 0.2.0, < 1.0 |
+| **Title** | Compatible with apcore-python >= 0.13.0 |
+| **Target** | apcore >= 0.13.0, < 1.0 |
 | **Measurement** | Integration tests against latest apcore-python release |
 | **Traces to** | PRD Section 8.3 |
 
-**Description:** apcore-mcp shall declare a dependency on `apcore>=0.2.0,<1.0` and shall be tested against the latest release within that range.
+**Description:** apcore-mcp shall declare a dependency on `apcore>=0.13.0,<1.0` and shall be tested against the latest release within that range.
 
 ---
 
@@ -2983,7 +3030,7 @@ Workflow Hints: ...
 | **Measurement** | Manual integration testing with Claude Desktop and Cursor (or another MCP client) |
 | **Traces to** | PRD Section 5.3 |
 
-**Description:** apcore-mcp shall be verified working with Claude Desktop (stdio transport) and at least one additional MCP client (e.g., Cursor, Windsurf) before v0.1.0 release.
+**Description:** apcore-mcp shall be verified working with Claude Desktop (stdio transport) and at least one additional MCP client (e.g., Cursor, Windsurf) before release.
 
 ---
 
@@ -3463,12 +3510,53 @@ def serve(
     log_level: str | None = None,
     dynamic: bool = False,
     validate_inputs: bool = False,
+    metrics_collector: MetricsExporter | None = None,
+    explorer: bool = False,
+    explorer_prefix: str = "/explorer",
+    allow_execute: bool = False,
+    authenticator: Authenticator | None = None,
+    require_auth: bool = True,
+    exempt_paths: list[str] | None = None,
+    approval_handler: ApprovalHandler | None = None,
+    output_formatter: Callable[[dict], str] | None = None,
 ) -> None: ...
 ```
 
 **Behavior:** Blocks until server shutdown. Returns `None`.
 
 **Exceptions:** `TypeError`, `ValueError`, `OSError`.
+
+#### 8.1.1a async_serve() Function
+
+**Module:** `apcore_mcp`
+
+**Signature:**
+```python
+async def async_serve(
+    registry_or_executor: Registry | Executor,
+    *,
+    name: str = "apcore-mcp",
+    version: str | None = None,
+    tags: list[str] | None = None,
+    prefix: str | None = None,
+    log_level: str | None = None,
+    dynamic: bool = False,
+    validate_inputs: bool = False,
+    metrics_collector: MetricsExporter | None = None,
+    explorer: bool = False,
+    explorer_prefix: str = "/explorer",
+    allow_execute: bool = False,
+    authenticator: Authenticator | None = None,
+    require_auth: bool = True,
+    exempt_paths: list[str] | None = None,
+    approval_handler: ApprovalHandler | None = None,
+    output_formatter: Callable[[dict], str] | None = None,
+) -> AsyncIterator[Starlette]: ...
+```
+
+**Behavior:** Async context manager that yields a Starlette ASGI application for embedding in a larger server. Does not bind to a port — the caller is responsible for running the app.
+
+**Exceptions:** `TypeError`, `ValueError`.
 
 #### 8.1.2 to_openai_tools() Function
 
@@ -3635,6 +3723,7 @@ MCP_ELICIT_KEY: str = "_mcp_elicit"
 | `CallDepthExceededError` | `CALL_DEPTH_EXCEEDED` | "Call depth limit exceeded" |
 | `CircularCallError` | `CIRCULAR_CALL` | "Circular call detected" |
 | `CallFrequencyExceededError` | `CALL_FREQUENCY_EXCEEDED` | "Call frequency limit exceeded" |
+| `ExecutionCancelledError` | `EXECUTION_CANCELLED` | "Execution was cancelled" |
 
 ---
 
@@ -3647,8 +3736,8 @@ MCP_ELICIT_KEY: str = "_mcp_elicit"
 | F-001 | Registry-to-MCP Schema Mapping | FR-SCHEMA-001, FR-SCHEMA-002, FR-SCHEMA-003, FR-SCHEMA-006, FR-SERVER-011 | NFR-PERF-001, NFR-PERF-003 | UC-001, UC-002 |
 | F-002 | Annotation-to-MCP Mapping | FR-ANNOT-001, FR-ANNOT-002, FR-ANNOT-003, FR-ANNOT-004, FR-ANNOT-005, FR-ANNOT-006 | -- | UC-001, UC-002 |
 | F-003 | MCP Execution Routing | FR-EXEC-001, FR-EXEC-002, FR-EXEC-003, FR-EXEC-004, FR-EXEC-007 | NFR-PERF-002, NFR-SEC-001 | UC-003, UC-004 |
-| F-004 | MCP Error Mapping | FR-ERROR-001 through FR-ERROR-011 | NFR-SEC-002 | UC-004 |
-| F-005 | serve() Function | FR-SERVER-001 through FR-SERVER-011 | NFR-REL-001, NFR-REL-002 | UC-001 |
+| F-004 | MCP Error Mapping | FR-ERROR-001 through FR-ERROR-012 | NFR-SEC-002 | UC-004 |
+| F-005 | serve() Function | FR-SERVER-001 through FR-SERVER-012 | NFR-REL-001, NFR-REL-002 | UC-001 |
 | F-006 | stdio Transport | FR-TRANSPORT-001, FR-TRANSPORT-002, FR-TRANSPORT-005 | -- | UC-001, UC-006 |
 | F-007 | Streamable HTTP Transport | FR-TRANSPORT-003, FR-SERVER-002 | NFR-PERF-004 | UC-001 |
 | F-008 | to_openai_tools() Function | FR-OPENAI-001, FR-OPENAI-002, FR-OPENAI-005, FR-SCHEMA-004 | -- | UC-005 |
@@ -3701,6 +3790,7 @@ MCP_ELICIT_KEY: str = "_mcp_elicit"
 | FR-ERROR-009 | F-004 |
 | FR-ERROR-010 | F-004 |
 | FR-ERROR-011 | F-004 |
+| FR-ERROR-012 | F-004 |
 | FR-SERVER-001 | F-005, F-006 |
 | FR-SERVER-002 | F-005, F-007 |
 | FR-SERVER-003 | F-005, F-010 |
@@ -3712,6 +3802,7 @@ MCP_ELICIT_KEY: str = "_mcp_elicit"
 | FR-SERVER-009 | F-018 |
 | FR-SERVER-010 | F-016 |
 | FR-SERVER-011 | F-001, F-005 |
+| FR-SERVER-012 | F-005 |
 | FR-TRANSPORT-001 | F-006 |
 | FR-TRANSPORT-002 | F-006 |
 | FR-TRANSPORT-003 | F-007 |
@@ -3813,6 +3904,12 @@ class ModuleAnnotations:
     idempotent: bool = False
     requires_approval: bool = False
     open_world: bool = True
+    streaming: bool = False
+    cacheable: bool = False
+    paginated: bool = False
+    cache_ttl: int | None = None
+    cache_key_fields: list[str] | None = None
+    pagination_style: str | None = None
 
 # Error hierarchy (apcore.errors)
 # Base: ModuleError(code, message, details, cause, trace_id)
@@ -3824,6 +3921,7 @@ InvalidInputError(message: str)                             # code="GENERAL_INVA
 CallDepthExceededError(depth, max_depth, call_chain)        # code="CALL_DEPTH_EXCEEDED"
 CircularCallError(module_id, call_chain)                    # code="CIRCULAR_CALL"
 CallFrequencyExceededError(module_id, count, max_repeat, call_chain)  # code="CALL_FREQUENCY_EXCEEDED"
+ExecutionCancelledError(module_id: str)                              # code="EXECUTION_CANCELLED"
 ```
 
 ### 10.4 Requirement Counts Summary
@@ -3833,8 +3931,8 @@ CallFrequencyExceededError(module_id, count, max_repeat, call_chain)  # code="CA
 | FR-SCHEMA | 6 |
 | FR-ANNOT | 7 |
 | FR-EXEC | 7 |
-| FR-ERROR | 11 |
-| FR-SERVER | 11 |
+| FR-ERROR | 12 |
+| FR-SERVER | 12 |
 | FR-TRANSPORT | 5 |
 | FR-OPENAI | 7 |
 | FR-CLI | 8 |
@@ -3844,7 +3942,7 @@ CallFrequencyExceededError(module_id, count, max_repeat, call_chain)  # code="CA
 | FR-HEALTH | 2 |
 | FR-RESOURCE | 2 |
 | FR-EXPLORER | 6 |
-| **Total FRs** | **84** |
+| **Total FRs** | **86** |
 | NFR-PERF | 4 |
 | NFR-SEC | 3 |
 | NFR-REL | 3 |
@@ -3852,7 +3950,7 @@ CallFrequencyExceededError(module_id, count, max_repeat, call_chain)  # code="CA
 | NFR-COMPAT | 4 |
 | NFR-PORT | 2 |
 | **Total NFRs** | **20** |
-| **Grand Total** | **104** |
+| **Grand Total** | **106** |
 
 ---
 
