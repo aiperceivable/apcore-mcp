@@ -890,14 +890,34 @@ The wire format uses camelCase (`retryable`, `aiGuidance`, `userFixable`, `sugge
 
 ---
 
+#### F-032: Custom Output Formatter
+
+**Title:** Pluggable output formatter for tool execution results
+
+**Description:** `serve()`, `async_serve()`, and `ExecutionRouter` accept an optional `output_formatter` callable that transforms dict execution results into text for LLM consumption. When not provided, results are serialised as raw JSON via `json.dumps()`. The formatter is only applied to dict-typed results; non-dict results (strings, lists, etc.) always use JSON serialisation.
+
+**User Story:** As a developer, I want to customise how tool outputs are formatted for the LLM (e.g., as Markdown tables via `apcore_toolkit.to_markdown`), so that I can improve readability and reduce token consumption without modifying my modules.
+
+**Acceptance Criteria:**
+1. `serve()` and `async_serve()` accept an `output_formatter` parameter typed as `Callable[[dict], str] | None`.
+2. `ExecutionRouter` uses the formatter when the result is a dict.
+3. If the formatter raises an exception, the router falls back to `json.dumps()` silently.
+4. Non-dict results (lists, strings, None) bypass the formatter entirely.
+5. `APCoreMCP` constructor accepts `output_formatter` and forwards it to the router.
+6. Available in both Python and TypeScript implementations.
+
+**Priority:** P1
+
+---
+
 **Feature Count Summary:**
 
 | Priority | Count | Features |
 |----------|-------|----------|
 | P0       | 9     | F-001 through F-009 |
-| P1       | 7     | F-010 through F-016 |
+| P1       | 8     | F-010 through F-016, F-032 |
 | P2       | 15    | F-017 through F-031 |
-| **Total**| **31**|                      |
+| **Total**| **32**|                      |
 
 ---
 

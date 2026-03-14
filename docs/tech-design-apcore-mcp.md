@@ -292,6 +292,26 @@ graph TB
 
 **Consequences:** The `SchemaConverter` includes a `_inline_refs()` method that resolves all `$defs`-local `$ref` nodes. The `$defs` key is removed from the final schema.
 
+#### ADR-05: Intentional Language-Idiomatic Differences Between Python and TypeScript
+
+**Context:** apcore-mcp is implemented in both Python and TypeScript. While the public API surface (components, features, behavior) is kept in sync, some internal APIs and parameter conventions intentionally differ to follow each language's idioms and runtime model.
+
+**Decision:** The following differences are **by design** and should not be treated as sync gaps:
+
+| Area | Python | TypeScript | Rationale |
+|------|--------|------------|-----------|
+| **Authenticator protocol** | `authenticate(headers: dict[str, str]) -> Identity \| None` (sync, pre-extracted headers) | `authenticate(req: IncomingMessage): Promise<Identity \| null>` (async, raw request) | Python's ASGI middleware extracts headers before calling; Node.js idiom is to pass the request object. Both achieve the same security boundary. |
+| **MCPServer wrapper** | `MCPServer` class with `start()/stop()/wait()` (F-025, Python Only) | Not implemented | Python needs threading for background servers; Node.js async model doesn't require a wrapper class. PRD F-025 explicitly scopes this to Python. |
+| **BridgeContext** | Uses apcore's `Context.create(data=..., identity=...)` directly | Explicit `BridgeContext` interface with `createBridgeContext()` | Python's apcore SDK provides a typed `Context` class. TypeScript's duck-typed executor requires an explicit interface for type safety. |
+| **TransportManager API** | Constructor params + `build_streamable_http_app()` kwargs | Setter methods (`setAuthenticator()`, `setRequireAuth()`, etc.) | Python follows immutable-configuration style; TypeScript follows builder pattern. Both produce the same server. |
+| **async_serve() return** | `AsyncIterator[Starlette]` (async context manager with auto-cleanup) | `Promise<AsyncServeApp>` with `{ handler, close() }` (explicit cleanup) | Python idiom is context managers; Node.js idiom is explicit resource management. |
+| **Parameter style** | Keyword arguments (e.g., `convert_registry(registry, embed_annotations=True)`) | Options objects (e.g., `convertRegistry(registry, { embedAnnotations: true })`) | Standard convention in each language. |
+| **JWTAuthenticator constructor** | Positional `key` + keyword args | Single options object with `key` + deprecated `secret` alias | TypeScript's `secret` was renamed to `key` for clarity; alias kept for backward compat. Both support `requireAuth`. |
+| **Explorer integration** | `create_explorer_mount()` returns Starlette `Mount` | `TransportManager.setExplorer(handler, prefix)` | Starlette uses route mounts; Node.js HTTP uses handler functions. |
+| **buildInitOptions()** | `MCPServerFactory.build_init_options()` public method | Init options built inline in `serve()`/`asyncServe()` | Python exposes it for `MCPServer` wrapper; TypeScript doesn't need it. |
+
+**Consequences:** Cross-language sync audits should verify **feature parity and behavioral equivalence**, not API shape identity. The sync report should classify these as "intentional" rather than "missing".
+
 ---
 
 ## 4. Proposed Solution (Solution A -- Recommended)
