@@ -12,11 +12,6 @@
 
 **apcore-mcp** turns any [apcore](https://github.com/aipartnerup/apcore)-based project into an [MCP Server](https://modelcontextprotocol.io/) and [OpenAI tool](https://platform.openai.com/docs/guides/function-calling) provider — with **zero code changes** to your existing project.
 
-### 🚀 Official SDKs
-
-- **Python SDK**: [aipartnerup/apcore-mcp-python](https://github.com/aipartnerup/apcore-mcp-python)
-- **TypeScript SDK**: [aipartnerup/apcore-mcp-typescript](https://github.com/aipartnerup/apcore-mcp-typescript)
-
 ```
 ┌──────────────────┐
 │  django-apcore   │  ← your existing apcore project (unchanged)

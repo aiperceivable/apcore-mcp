@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.10.0] - 2026-03-14
@@ -29,20 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 - `apcore-toolkit` is no longer a required dependency in the Python implementation
 
-## [0.9.0] - 2026-03-07
+## [0.9.0] - 2026-03-06
 
 ### Changed
 - Replaced the anemone logo in `apcore-mcp-logo.svg` with a new jellyfish mascot; moved the original anemone design to `apcore-mcp-image.svg`
 
-## [0.8.1] - 2026-03-03
-
-### Added
-- Comprehensive developer documentation site using MkDocs
-- Unified "Getting Started" guide with Python and TypeScript examples for CLI and programmatic usage
-- "Configuration Reference" detailing CLI arguments and programmatic API options for both languages
-- Cross-links to the unified documentation site in root, Python, and TypeScript READMEs
-
-## [0.8.0] - 2026-03-06
+## [0.8.0] - 2026-03-02
 
 ### Added
 - Approval system feature specification (F-028): runtime approval via `ElicitationApprovalHandler`, `--approval` CLI flag with modes `elicit`, `auto-approve`, `always-deny`, `off`
@@ -50,6 +42,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced error responses with AI guidance fields (`retryable`, `ai_guidance`/`aiGuidance`, `user_fixable`/`userFixable`, `suggestion`)
 - AI intent metadata in tool descriptions (`x-when-to-use`, `x-when-not-to-use`, `x-common-mistakes`, `x-workflow-hints`)
 - Streaming annotation in description suffixes
+- Comprehensive developer documentation site using MkDocs
+- Unified "Getting Started" guide and "Configuration Reference" for Python and TypeScript
 
 ### Changed
 - Cross-language naming convention documented: Python uses snake_case (`ai_guidance`), TypeScript uses camelCase (`aiGuidance`) for AI guidance fields
@@ -58,6 +52,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - JWT Authentication feature specification (F-027) — key file support, configurable strictness, path exemptions, audit logging
+- `Authenticator` protocol for pluggable authentication backends
+- `JWTAuthenticator` with `ClaimMapping` for JWT Bearer token validation
+- `AuthMiddleware` ASGI middleware with `ContextVar` bridge for Identity injection
+- CLI flags for JWT: `--jwt-secret`, `--jwt-algorithm`, `--jwt-audience`, `--jwt-issuer`
+
+### Changed
+- Updated security threat model with JWT-specific entries
+- Updated `serve()` API with `authenticator` parameter
 
 ## [0.6.0] - 2026-02-25
 
@@ -66,64 +68,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Elicitation support specification — user input requests during module execution
 - Dynamic tool registration specification
 
-## [0.5.0] - 2026-02-25
+## [0.5.1] - 2026-02-25
+
+### Changed
+- Renamed "Inspector" to "Explorer" across the entire specification and documentation (PRD, SRS, design, and test plans).
+
+## [0.5.0] - 2026-02-24
 
 ### Added
-- MCP Tool Explorer specification — browser-based UI for inspecting and testing tools
+- MCP Tool Explorer specification (F-026) — browser-based UI for inspecting and testing tools
 - Examples specification — cross-language standard for demo modules
 
-## [0.4.0] - 2026-02-27
+## [0.4.0] - 2026-02-23
 
 ### Added
-- JWT Authentication feature specification (F-027) across PRD, SRS, tech design, and test plan
-- `Authenticator` protocol for pluggable authentication backends
-- `JWTAuthenticator` with `ClaimMapping` for JWT Bearer token validation
-- `AuthMiddleware` ASGI middleware with `ContextVar` bridge for Identity injection
-- `auth/` package added to package structure (protocol.py, jwt.py, middleware.py)
-- CLI flags: `--jwt-secret`, `--jwt-algorithm`, `--jwt-audience`, `--jwt-issuer`
-- `PyJWT>=2.0` added as required dependency
-- 47 test cases specified: 22 unit (JWT), 12 unit (middleware), 13 integration
+- Resource handlers specification for serving documentation via MCP
+- Prometheus metrics specification (`/metrics` endpoint)
+- CI/CD workflow specification for GitHub Actions
 
-### Changed
-- Updated NG-06 non-goal: from "no auth" to "no OAuth/API key management" (JWT bridges to ACL)
-- Updated C-05 constraint: authentication bridges to apcore ACL, not replaces it
-- Updated security threat model with JWT-specific entries
-- Updated `serve()` API with `authenticator` parameter
-
-## [0.3.0] - 2026-02-25
+## [0.3.0] - 2026-02-22
 
 ### Added
-- MCP Tool Explorer feature for browsing and testing tools (PRD, SRS, test plan)
-- Examples specification for apcore-mcp cross-language standard (`docs/examples-spec.md`)
-- Tool Explorer UI screenshot (`apcore-mcp-explorer-ui.png`)
-
-### Changed
+- Input validation specification (F-010) — pre-execution validation via `Executor.validate()`
+- `Context` and trace ID passback specification for request tracing
 - Updated response key from `output` to `result` in SRS and test plan
 
-## [0.2.0] - 2026-02-23
+## [0.2.0] - 2026-02-20
 
 ### Added
-- Documentation deployment workflow via GitHub Actions
-- Project logo (`apcore-mcp-logo.svg`)
-- MkDocs configuration for documentation site (`mkdocs.yml`)
-- Streaming bridge specification added to SRS and technical design documents
-- Background context and Python package availability notes in README
-
-### Changed
-- Expanded PRD to cover 25 features with detailed metrics and validation parameters
-- Updated SRS to reflect increased feature count and deferred feature notes
-- Revised technical design documentation to align with updated feature set and naming conventions
-- Updated test plan to validate new naming conventions (module IDs using hyphens instead of double underscores)
-- Enhanced test cases to ensure compliance with updated API specifications
-- Updated README with TypeScript repository link and current package status
+- MCPServer framework integration specification — non-blocking server wrapper and lifecycle hooks
+- Health endpoint specification for HTTP-based transports
+- Project logo (`apcore-mcp-logo.svg`) and MkDocs configuration (`mkdocs.yml`)
+- Expanded PRD to cover 25 initial features with detailed metrics
 
 ## [0.1.0] - 2026-02-15
 
 ### Added
 - Initial project setup for apcore-mcp
 - Core concept: automatic bridging of apcore modules to MCP Server and OpenAI Tools
-- Product Requirements Document (PRD)
-- Software Requirements Specification (SRS)
-- Technical Design Document
-- Test Plan
-- Initial README
+- Initial Product Requirements Document (PRD), SRS, Technical Design, and Test Plan
