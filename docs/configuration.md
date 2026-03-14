@@ -22,16 +22,98 @@ The CLI allows you to launch an MCP server by pointing to an extensions director
 
 ## Programmatic API
 
-### `serve()` Options
+### `APCoreMCP` (recommended)
 
-The `serve` function launches the MCP server. It accepts a Registry or Executor as the first argument.
+The unified entry point — configure once, use everywhere.
+
+=== "Python"
+
+    ```python
+    from apcore_mcp import APCoreMCP
+
+    mcp = APCoreMCP(
+        "./extensions",              # path, Registry, or Executor
+        name="apcore-mcp",          # server name
+        version=None,                # defaults to package version
+        tags=None,                   # filter modules by tags
+        prefix=None,                 # filter modules by ID prefix
+        log_level=None,              # logging level
+        validate_inputs=False,       # validate inputs against JSON Schema
+        output_formatter=to_markdown, # default: Markdown via apcore-toolkit
+                                     # set to None for raw JSON
+        metrics_collector=None,      # MetricsExporter for /metrics
+        authenticator=None,          # JWTAuthenticator instance
+        require_auth=True,           # False = permissive mode
+        exempt_paths=None,           # paths that bypass auth
+        approval_handler=None,       # approval handler
+    )
+
+    # Launch as MCP server (blocking)
+    mcp.serve(
+        transport="stdio",           # "stdio" | "streamable-http" | "sse"
+        host="127.0.0.1",
+        port=8000,
+        explorer=False,              # Enable Explorer UI
+        allow_execute=False,         # Enable "Try it" in UI
+    )
+
+    # Export as OpenAI tools
+    tools = mcp.to_openai_tools(strict=True, embed_annotations=False)
+
+    # Embed into ASGI app
+    async with mcp.async_serve(explorer=True) as app:
+        ...
+
+    # Inspect
+    mcp.tools       # list of module IDs
+    mcp.registry    # underlying Registry
+    mcp.executor    # underlying Executor
+    ```
+
+=== "TypeScript"
+
+    ```typescript
+    import { APCoreMCP } from "apcore-mcp";
+
+    const mcp = new APCoreMCP("./extensions", {
+      name: "apcore-mcp",
+      tags: undefined,
+      prefix: undefined,
+      logLevel: undefined,
+      validateInputs: false,
+      outputFormatter: toMarkdown, // default: Markdown; set to null for raw JSON
+      authenticator: undefined,
+      requireAuth: true,
+    });
+
+    // Launch as MCP server (blocking)
+    await mcp.serve({
+      transport: "stdio",
+      host: "127.0.0.1",
+      port: 8000,
+      explorer: false,
+      allowExecute: false,
+    });
+
+    // Export as OpenAI tools
+    const tools = mcp.toOpenaiTools({ strict: true });
+
+    // Inspect
+    mcp.tools       // list of module IDs
+    mcp.registry    // underlying Registry
+    mcp.executor    // underlying Executor
+    ```
+
+### `serve()` (function-based)
+
+The function-based API is still fully supported for users who prefer it.
 
 === "Python"
 
     ```python
     from apcore_mcp import serve
 
-    await serve(
+    serve(
         registry_or_executor,
         transport="stdio",           # "stdio" | "streamable-http" | "sse"
         host="127.0.0.1",
@@ -63,7 +145,7 @@ The `serve` function launches the MCP server. It accepts a Registry or Executor 
     });
     ```
 
-### `to_openai_tools()` Options
+### `to_openai_tools()` (function-based)
 
 Converts apcore modules into OpenAI-compatible tool definitions.
 
@@ -94,6 +176,52 @@ Converts apcore modules into OpenAI-compatible tool definitions.
     });
     ```
 
+## Output Formatting
+
+By default, `APCoreMCP` converts dict tool results to **Markdown** using `apcore-toolkit`'s `to_markdown()`. This produces output that is easier for LLMs to parse and reason about compared to raw JSON.
+
+**Behavior:**
+
+- Dict results → formatted via `output_formatter` (default: `to_markdown`)
+- Non-dict results → serialized with `json.dumps`
+- If the formatter raises an error → falls back to `json.dumps` silently
+
+**Opt out** by setting `output_formatter=None` to get raw JSON output:
+
+=== "Python"
+
+    ```python
+    # Default: Markdown output (opt-out)
+    mcp = APCoreMCP("./extensions")
+
+    # Raw JSON output
+    mcp = APCoreMCP("./extensions", output_formatter=None)
+
+    # Custom formatter
+    def my_formatter(result: dict) -> str:
+        return yaml.dump(result)
+
+    mcp = APCoreMCP("./extensions", output_formatter=my_formatter)
+    ```
+
+=== "TypeScript"
+
+    ```typescript
+    // Default: Markdown output (opt-out)
+    const mcp = new APCoreMCP("./extensions");
+
+    // Raw JSON output
+    const mcp = new APCoreMCP("./extensions", { outputFormatter: null });
+
+    // Custom formatter
+    const mcp = new APCoreMCP("./extensions", {
+      outputFormatter: (result) => yaml.dump(result),
+    });
+    ```
+
+!!! note
+    The function-based `serve()` API defaults to `output_formatter=None` (raw JSON) for backward compatibility. Use `APCoreMCP` to get Markdown by default.
+
 ## Authentication (JWT)
 
 For HTTP-based transports, you can secure your endpoints using JWT Bearer tokens.
@@ -101,25 +229,24 @@ For HTTP-based transports, you can secure your endpoints using JWT Bearer tokens
 === "Python"
 
     ```python
+    from apcore_mcp import APCoreMCP
     from apcore_mcp.auth import JWTAuthenticator
-    from apcore_mcp import serve
 
     auth = JWTAuthenticator(key="your-secret-key")
-    await serve(registry, transport="streamable-http", authenticator=auth)
+    mcp = APCoreMCP("./extensions", authenticator=auth)
+    mcp.serve(transport="streamable-http")
     ```
 
 === "TypeScript"
 
     ```typescript
-    import { serve, JWTAuthenticator } from "apcore-mcp";
+    import { APCoreMCP, JWTAuthenticator } from "apcore-mcp";
 
     const authenticator = new JWTAuthenticator({
       secret: "your-secret-key",
     });
-    await serve(registry, {
-      transport: "streamable-http",
-      authenticator,
-    });
+    const mcp = new APCoreMCP("./extensions", { authenticator });
+    await mcp.serve({ transport: "streamable-http" });
     ```
 
 ## Tool Explorer

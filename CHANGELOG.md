@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-03-14
+
+### Changed
+- Updated Python and TypeScript implementation versions to v0.10.0
+- Default `output_formatter` changed to `None` (raw JSON) in both implementations
+- Dependency bump to `apcore>=0.13.0` / `apcore-js>=0.13.0` for new annotation fields (`cacheable`, `paginated`)
+- Annotation description suffix now includes `cacheable` and `paginated` when set
+
+### Removed
+- `apcore-toolkit` is no longer a required dependency in the Python implementation
+
 ## [0.8.1] - 2026-03-03
 
 ### Added

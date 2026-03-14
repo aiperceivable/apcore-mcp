@@ -54,42 +54,101 @@ Once running in HTTP mode with `--explorer`, visit `http://127.0.0.1:8000/explor
 
 ## 3. Programmatic Usage
 
-Integrate **apcore-mcp** directly into your application.
+Integrate **apcore-mcp** directly into your application. The `APCoreMCP` class is the recommended entry point — one object, all capabilities.
 
 === "Python"
+
+    ```python
+    from apcore_mcp import APCoreMCP
+
+    # One line setup — auto-discovers all modules
+    # Tool outputs are automatically formatted as Markdown (via apcore-toolkit)
+    mcp = APCoreMCP("./extensions")
+
+    # Launch as MCP Server
+    mcp.serve()
+
+    # Or with HTTP + Explorer UI
+    mcp.serve(transport="streamable-http", port=8000, explorer=True)
+
+    # Or convert to OpenAI tool definitions
+    tools = mcp.to_openai_tools()
+    # response = openai.chat.completions.create(tools=tools, ...)
+
+    # Opt out of Markdown formatting (return raw JSON)
+    mcp = APCoreMCP("./extensions", output_formatter=None)
+    ```
+
+    You can also pass an existing Registry or Executor:
+
+    ```python
+    from apcore import Registry
+    from apcore_mcp import APCoreMCP
+
+    registry = Registry(extensions_dir="./extensions")
+    registry.discover()
+    mcp = APCoreMCP(registry, name="my-server", tags=["public"])
+    ```
+
+    <details>
+    <summary>Function-based API (still supported)</summary>
 
     ```python
     from apcore import Registry
     from apcore_mcp import serve, to_openai_tools
 
-    # 1. Setup apcore registry
     registry = Registry(extensions_dir="./extensions")
     registry.discover()
 
-    # 2a. Launch as MCP Server
-    await serve(registry, transport="stdio")
-
-    # 2b. Or convert to OpenAI tool definitions
+    serve(registry, transport="stdio")
     tools = to_openai_tools(registry)
-    # response = openai.chat.completions.create(tools=tools, ...)
     ```
+    </details>
 
 === "TypeScript"
+
+    ```typescript
+    import { APCoreMCP } from "apcore-mcp";
+
+    // One line setup — auto-discovers all modules
+    // Tool outputs are automatically formatted as Markdown
+    const mcp = new APCoreMCP("./extensions");
+
+    // Launch as MCP Server
+    await mcp.serve();
+
+    // Or with HTTP + Explorer UI
+    await mcp.serve({ transport: "streamable-http", port: 8000, explorer: true });
+
+    // Or convert to OpenAI tool definitions
+    const tools = mcp.toOpenaiTools();
+    ```
+
+    You can also pass an existing Registry or Executor:
+
+    ```typescript
+    import { Registry } from "apcore-js";
+    import { APCoreMCP } from "apcore-mcp";
+
+    const registry = new Registry({ extensionsDir: "./extensions" });
+    await registry.discover();
+    const mcp = new APCoreMCP(registry, { name: "my-server", tags: ["public"] });
+    ```
+
+    <details>
+    <summary>Function-based API (still supported)</summary>
 
     ```typescript
     import { Registry } from "apcore-js";
     import { serve, toOpenaiTools } from "apcore-mcp";
 
-    // 1. Setup apcore registry
     const registry = new Registry({ extensionsDir: "./extensions" });
     await registry.discover();
 
-    // 2a. Launch as MCP Server
     await serve(registry, { transport: "stdio" });
-
-    // 2b. Or convert to OpenAI tool definitions
     const tools = toOpenaiTools(registry);
     ```
+    </details>
 
 ## 4. MCP Client Configuration
 
