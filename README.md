@@ -4,14 +4,18 @@
 
 # apcore-mcp
 
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Python Version](https://img.shields.io/badge/python-3.11%2B-blue)](https://github.com/aipartnerup/apcore-mcp-python)
+[![TypeScript Version](https://img.shields.io/badge/TypeScript-Node_18%2B-blue)](https://github.com/aipartnerup/apcore-mcp-typescript)
+
 > **Build once, invoke by Code or AI.**
 
-Automatic MCP Server & OpenAI Tools Bridge for apcore.
+**apcore-mcp** turns any [apcore](https://github.com/aipartnerup/apcore)-based project into an [MCP Server](https://modelcontextprotocol.io/) and [OpenAI tool](https://platform.openai.com/docs/guides/function-calling) provider — with **zero code changes** to your existing project.
 
-**Python:** [apcore-mcp-python](https://github.com/aipartnerup/apcore-mcp-python) · `pip install apcore-mcp`
-**TypeScript:** [apcore-mcp-typescript](https://github.com/aipartnerup/apcore-mcp-typescript) · `npm install apcore-mcp`
+### 🚀 Official SDKs
 
-**apcore-mcp** turns any [apcore](https://github.com/aipartnerup/apcore)-based project into an MCP Server and OpenAI tool provider — with **zero code changes** to your existing project.
+- **Python SDK**: [aipartnerup/apcore-mcp-python](https://github.com/aipartnerup/apcore-mcp-python)
+- **TypeScript SDK**: [aipartnerup/apcore-mcp-typescript](https://github.com/aipartnerup/apcore-mcp-typescript)
 
 ```
 ┌──────────────────┐
@@ -31,99 +35,134 @@ Automatic MCP Server & OpenAI Tools Bridge for apcore.
  Server      Tools
 ```
 
-## Design Philosophy
+---
 
-- **Zero intrusion** — your apcore project needs no code changes, no imports, no dependencies on apcore-mcp
-- **Zero configuration** — point to an extensions directory, everything is auto-discovered
-- **Pure adapter** — apcore-mcp reads from the apcore Registry; it never modifies your modules
-- **Works with any `xxx-apcore` project** — if it uses the apcore Module Registry, apcore-mcp can serve it
+## Installation
 
-## Features
+=== "🐍 Python"
 
-- **Auto-discovery** — all modules in the extensions directory are found and exposed automatically
-- **Three transports** — stdio (default, for desktop clients), Streamable HTTP, and SSE
-- **Embeddable server** — `async_serve()` / `asyncServe()` returns an ASGI/HTTP handler for mounting in larger applications
-- **JWT authentication** — optional Bearer token auth for HTTP transports with permissive mode and path exemptions
-- **Approval mechanism** — runtime approval via MCP elicitation, auto-approve, or always-deny handlers
-- **AI guidance** — error responses include `retryable`, `ai_guidance`, `suggestion` fields for agent consumption
-- **AI intent metadata** — tool descriptions enriched with `x-when-to-use`, `x-when-not-to-use`, `x-common-mistakes` from module metadata
-- **Streaming bridge** — progress notifications and deep merge chunk accumulation for streaming tool execution
-- **Annotation mapping** — apcore annotations (readonly, destructive, idempotent, cacheable, paginated, streaming) map to MCP ToolAnnotations
-- **Schema conversion** — JSON Schema `$ref`/`$defs` inlining, strict mode for OpenAI Structured Outputs
-- **Error sanitization** — ACL errors and internal errors are sanitized; stack traces are never leaked
-- **Dynamic registration** — modules registered/unregistered at runtime are reflected immediately
-- **Dual output** — same registry powers both MCP Server and OpenAI tool definitions
-- **Output formatting** — customizable tool output (JSON default, Markdown via apcore-toolkit, or custom formatter)
-- **Extension helpers** — modules can call `report_progress()` and `elicit()` during execution
-- **Tool Explorer** — browser-based UI for browsing schemas and testing tools interactively (like Swagger UI for MCP)
+    ```bash
+    pip install apcore-mcp
+    ```
+    *Requires Python 3.11+ and apcore 0.13.0+.*
 
-## How It Works
+=== "📘 TypeScript"
 
-### Mapping: apcore to MCP
+    ```bash
+    npm install apcore-mcp
+    ```
+    *Requires Node.js 18+ and apcore 0.13.0+.*
 
-| apcore | MCP |
-|--------|-----|
-| `module_id` | Tool name |
-| `description` | Tool description |
-| `input_schema` | `inputSchema` |
-| `annotations.readonly` | `ToolAnnotations.readOnlyHint` |
-| `annotations.destructive` | `ToolAnnotations.destructiveHint` |
-| `annotations.idempotent` | `ToolAnnotations.idempotentHint` |
-| `annotations.open_world` | `ToolAnnotations.openWorldHint` |
-| `annotations.cacheable` | `ToolAnnotations._meta.cacheable` |
-| `annotations.cache_ttl` | `ToolAnnotations._meta.cacheTtl` |
-| `annotations.paginated` | `ToolAnnotations._meta.paginated` |
-| `metadata.x-preconditions` | `ToolAnnotations._meta.preconditions` |
-| `metadata.x-cost-per-call` | `ToolAnnotations._meta.costPerCall` |
+---
 
-### Mapping: apcore to OpenAI Tools
+## Quick Start
 
-| apcore | OpenAI |
-|--------|--------|
-| `module_id` (`image.resize`) | `name` (`image-resize`) |
-| `description` | `description` |
-| `input_schema` | `parameters` |
+### 1. Serve your modules via MCP
 
-Module IDs with dots are normalized to dashes for OpenAI compatibility (bijective mapping).
+=== "🐍 Python"
 
-### Architecture
+    ```python
+    from apcore_mcp import APCoreMCP
 
-```
-Your apcore project (unchanged)
-    │
-    │  extensions directory
-    ▼
-apcore-mcp (separate process / library call)
-    │
-    ├── MCP Server path
-    │     SchemaConverter + AnnotationMapper
-    │       → MCPServerFactory → ExecutionRouter → TransportManager
-    │
-    └── OpenAI Tools path
-          SchemaConverter + AnnotationMapper + IDNormalizer
-            → OpenAIConverter → tool definitions
-```
+    mcp = APCoreMCP("./extensions")
+
+    # Launch as MCP Server over stdio
+    mcp.serve()
+
+    # Or with HTTP + Explorer UI
+    mcp.serve(transport="streamable-http", port=8000, explorer=True)
+    ```
+
+=== "📘 TypeScript"
+
+    ```typescript
+    import { serve } from "apcore-mcp";
+
+    // Launch MCP server over stdio
+    await serve("./extensions");
+
+    // Launch over Streamable HTTP with Explorer UI
+    await serve("./extensions", {
+      transport: "streamable-http",
+      port: 8000,
+      explorer: true,
+    });
+    ```
+
+=== "💻 CLI"
+
+    ```bash
+    # stdio (default)
+    apcore-mcp --extensions-dir ./extensions
+
+    # Streamable HTTP with Explorer UI
+    apcore-mcp --extensions-dir ./extensions --transport streamable-http --port 8000 --explorer
+    ```
+
+### 2. Export as OpenAI Tools
+
+=== "🐍 Python"
+
+    ```python
+    from apcore_mcp import APCoreMCP
+
+    mcp = APCoreMCP("./extensions")
+    tools = mcp.to_openai_tools()
+    ```
+
+=== "📘 TypeScript"
+
+    ```typescript
+    import { toOpenaiTools } from "apcore-mcp";
+
+    const tools = toOpenaiTools("./extensions");
+    ```
+
+---
+
+## Key Features
+
+- **🚀 Zero Intrusion**: Your apcore project needs no code changes, no imports, and no extra dependencies.
+- **🔍 Auto-discovery**: Point to an extensions directory, and everything is automatically discovered and exposed.
+- **🌐 Triple Transport**: Supports `stdio` (for local LLMs), `Streamable HTTP`, and `SSE`.
+- **🛠️ Tool Explorer**: Browser-based UI to browse schemas and test tools interactively (like Swagger UI for MCP).
+- **🛡️ Security**: Built-in JWT authentication, PEM key support, and runtime approval elicitation.
+- **🤖 AI Optimized**: Enriched metadata (`x-when-to-use`), error sanitization with AI guidance, and strict mode for OpenAI.
+- **🔄 Dynamic**: Reflects module registrations/unregistrations at runtime without restarting.
+
+---
+
+## Architecture
+
+apcore-mcp acts as a protocol-specific adapter on top of the apcore Registry, mapping its metadata to MCP and OpenAI standards:
+
+| apcore Concept | MCP Mapping | OpenAI Mapping |
+|----------------|-------------|----------------|
+| `module_id` | Tool name | `name` (dash-normalized) |
+| `description` | Tool description | `description` |
+| `input_schema` | `inputSchema` | `parameters` |
+| `annotations` | `ToolAnnotations` hints | Description suffixes (optional) |
+| `metadata` | `_meta` fields | — |
+
+---
+
+## Documentation
+
+- **[Full Documentation Site](https://aipartnerup.github.io/apcore-mcp/)**
+- **[Getting Started Guide](docs/getting-started.md)** — Installation and basic setup
+- [Feature Specs Overview](docs/features/overview.md) — All feature specifications
+- [Specifications (PRD, TDD, SRS)](docs/spec/)
+
+---
 
 ## Implementations
 
 | Language | Repository | Package | Status |
 |----------|-----------|---------|--------|
-| Python | [apcore-mcp-python](https://github.com/aipartnerup/apcore-mcp-python) | `pip install apcore-mcp` |  ✅  v0.10.0 |
-| TypeScript | [apcore-mcp-typescript](https://github.com/aipartnerup/apcore-mcp-typescript) | `npm install apcore-mcp` |  ✅  v0.10.0 |
+| Python | [apcore-mcp-python](https://github.com/aipartnerup/apcore-mcp-python) | `pip install apcore-mcp` | ✅ v0.10.x |
+| TypeScript | [apcore-mcp-typescript](https://github.com/aipartnerup/apcore-mcp-typescript) | `npm install apcore-mcp` | ✅ v0.10.x |
 | Go | apcore-mcp-go | — | Planned |
-
-## Documentation
-
-For full documentation, including Quick Start guides for Python and TypeScript, visit:
-**[https://aipartnerup.github.io/apcore-mcp/](https://aipartnerup.github.io/apcore-mcp/)**
-
-## Specification Documents
-
-- [Product Requirements (PRD)](docs/prd-apcore-mcp.md)
-- [Software Requirements (SRS)](docs/srs-apcore-mcp.md)
-- [Technical Design](docs/tech-design-apcore-mcp.md)
-- [Test Plan](docs/test-plan-apcore-mcp.md)
 
 ## License
 
-Apache-2.0
+This project is licensed under the **Apache License 2.0**. See the [LICENSE](LICENSE) file for details.
