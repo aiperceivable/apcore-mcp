@@ -6,7 +6,7 @@
 | Document    | Software Requirements Specification (SRS)                                |
 | Version     | 1.5                                                                      |
 | Date        | 2026-03-13                                                               |
-| Author      | aipartnerup Engineering Team                                             |
+| Author      | aiperceivable Engineering Team                                             |
 | Status      | Draft                                                                    |
 | PRD Ref     | `docs/prd-apcore-mcp.md` v1.3                                           |
 | Tech Design | `docs/tech-design-apcore-mcp.md` v1.3                                   |
@@ -18,12 +18,12 @@
 
 | Version | Date       | Author                      | Description                                                                 |
 |---------|------------|------------------------------|-----------------------------------------------------------------------------|
-| 1.0     | 2026-02-15 | aipartnerup Engineering Team | Initial draft                                                               |
-| 1.1     | 2026-02-23 | aipartnerup Engineering Team | Streaming bridge spec; expanded feature count; updated naming conventions   |
-| 1.2     | 2026-02-25 | aipartnerup Engineering Team | MCP Tool Explorer feature; response key changed from "output" to "result"   |
-| 1.3     | 2026-02-27 | aipartnerup Engineering Team | JWT Authentication (F-027): Authenticator protocol, JWTAuthenticator, AuthMiddleware |
-| 1.4     | 2026-03-02 | aipartnerup Engineering Team | Approval system (F-028), AI guidance fields, AI intent metadata, streaming annotations |
-| 1.5     | 2026-03-13 | aipartnerup Engineering Team | Sync update: async_serve(), ExecutionCancelledError, updated serve() signature, Python >= 3.11, apcore >= 0.13.0, new annotation fields |
+| 1.0     | 2026-02-15 | aiperceivable Engineering Team | Initial draft                                                               |
+| 1.1     | 2026-02-23 | aiperceivable Engineering Team | Streaming bridge spec; expanded feature count; updated naming conventions   |
+| 1.2     | 2026-02-25 | aiperceivable Engineering Team | MCP Tool Explorer feature; response key changed from "output" to "result"   |
+| 1.3     | 2026-02-27 | aiperceivable Engineering Team | JWT Authentication (F-027): Authenticator protocol, JWTAuthenticator, AuthMiddleware |
+| 1.4     | 2026-03-02 | aiperceivable Engineering Team | Approval system (F-028), AI guidance fields, AI intent metadata, streaming annotations |
+| 1.5     | 2026-03-13 | aiperceivable Engineering Team | Sync update: async_serve(), ExecutionCancelledError, updated serve() signature, Python >= 3.11, apcore >= 0.13.0, new annotation fields |
 
 ---
 
@@ -3860,7 +3860,7 @@ See Section 1.4 for all referenced documents and specifications.
 
 ### 10.3 apcore API Surface Used by apcore-mcp
 
-The following apcore-python APIs are consumed by apcore-mcp. Verified against source code at `/Users/tercel/WorkSpace/aipartnerup/apcore-python/src/apcore/`.
+The following apcore-python APIs are consumed by apcore-mcp. Verified against source code at `/Users/tercel/WorkSpace/aiperceivable/apcore-python/src/apcore/`.
 
 ```python
 # Registry (apcore.registry.registry.Registry)

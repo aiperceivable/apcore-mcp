@@ -5,7 +5,7 @@
 | Title       | apcore-mcp: Automatic MCP Server & OpenAI Tools Bridge                   |
 | Version     | 1.4                                                                      |
 | Date        | 2026-03-02                                                               |
-| Author      | aipartnerup Engineering Team                                             |
+| Author      | aiperceivable Engineering Team                                             |
 | Status      | Draft                                                                    |
 | Reviewers   | apcore Core Maintainers, Community Contributors                          |
 | PRD Ref     | `docs/prd-apcore-mcp.md` v1.3                                           |
@@ -2740,7 +2740,7 @@ readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.10"
 authors = [
-    { name = "aipartnerup", email = "team@aipartnerup.com" },
+    { name = "aiperceivable", email = "team@aiperceivable.com" },
 ]
 keywords = ["apcore", "mcp", "openai", "tools", "ai", "agent"]
 classifiers = [
@@ -2774,10 +2774,10 @@ dev = [
 apcore-mcp = "apcore_mcp.__main__:main"
 
 [project.urls]
-Homepage = "https://github.com/aipartnerup/apcore-mcp-python"
-Repository = "https://github.com/aipartnerup/apcore-mcp-python"
-Documentation = "https://github.com/aipartnerup/apcore-mcp-python#readme"
-Issues = "https://github.com/aipartnerup/apcore-mcp-python/issues"
+Homepage = "https://github.com/aiperceivable/apcore-mcp-python"
+Repository = "https://github.com/aiperceivable/apcore-mcp-python"
+Documentation = "https://github.com/aiperceivable/apcore-mcp-python#readme"
+Issues = "https://github.com/aiperceivable/apcore-mcp-python/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/apcore_mcp"]
@@ -2958,7 +2958,7 @@ show_missing = true
 | Term                    | Definition                                                                                      |
 |-------------------------|-------------------------------------------------------------------------------------------------|
 | **apcore**              | Schema-driven module development framework providing Registry, Executor, and schema validation  |
-| **apcore-python**       | Python SDK implementation of apcore (v0.5.0). Source: `/Users/tercel/WorkSpace/aipartnerup/apcore-python/` |
+| **apcore-python**       | Python SDK implementation of apcore (v0.5.0). Source: `/Users/tercel/WorkSpace/aiperceivable/apcore-python/` |
 | **MCP**                 | Model Context Protocol -- Anthropic's open protocol for AI assistant tool integration            |
 | **MCP Server**          | Process exposing tools/resources/prompts to MCP clients via the MCP protocol                    |
 | **MCP Client**          | AI assistant app connecting to MCP Servers (Claude Desktop, Cursor, Windsurf)                   |
@@ -2982,7 +2982,7 @@ show_missing = true
 |------------------------------|--------------------------------------------------------------------------|
 | `docs/prd-apcore-mcp.md`    | Product Requirements Document for apcore-mcp v1.0                        |
 | `ideas/apcore-mcp.md`       | Validated idea document with schema mapping tables                       |
-| apcore-python source         | `/Users/tercel/WorkSpace/aipartnerup/apcore-python/src/apcore/`          |
+| apcore-python source         | `/Users/tercel/WorkSpace/aiperceivable/apcore-python/src/apcore/`          |
 | apcore Registry              | `apcore/registry/registry.py` -- Central module registry                 |
 | apcore Executor              | `apcore/executor.py` -- Execution pipeline with ACL, validation          |
 | apcore Errors                | `apcore/errors.py` -- Full error hierarchy                               |

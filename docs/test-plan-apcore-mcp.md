@@ -5,7 +5,7 @@
 | Title       | apcore-mcp Test Plan & Test Cases                            |
 | Version     | 1.4                                                          |
 | Date        | 2026-03-02                                                   |
-| Author      | aipartnerup QA Team                                          |
+| Author      | aiperceivable QA Team                                          |
 | Status      | Draft                                                        |
 | PRD Ref     | `docs/prd-apcore-mcp.md` v1.3                               |
 | Tech Design | `docs/tech-design-apcore-mcp.md` v1.3                       |

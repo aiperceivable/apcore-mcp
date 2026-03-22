@@ -5,7 +5,7 @@
 | Title       | apcore-mcp: Automatic MCP Server & OpenAI Tools Bridge       |
 | Version     | 1.4                                                          |
 | Date        | 2026-03-02                                                   |
-| Author      | aipartnerup Product Team                                     |
+| Author      | aiperceivable Product Team                                     |
 | Status      | Draft                                                        |
 | Reviewers   | apcore Core Maintainers, Community Contributors              |
 | License     | Apache 2.0                                                   |
@@ -1270,7 +1270,7 @@ The following must all be true before the v0.1.0 release:
 | Reference | Description |
 |-----------|-------------|
 | `ideas/apcore-mcp.md` | Original idea document with validation status, schema mappings, and competitive analysis |
-| apcore-python source (`/Users/tercel/WorkSpace/aipartnerup/apcore-python/`) | SDK source code: Registry, Executor, ModuleDescriptor, ModuleAnnotations, error hierarchy |
+| apcore-python source (`/Users/tercel/WorkSpace/aiperceivable/apcore-python/`) | SDK source code: Registry, Executor, ModuleDescriptor, ModuleAnnotations, error hierarchy |
 | [MCP Specification](https://modelcontextprotocol.io/) | Official Model Context Protocol specification |
 | [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk) | Official Python SDK for building MCP servers and clients |
 | [OpenAI Function Calling Documentation](https://platform.openai.com/docs/guides/function-calling) | OpenAI's guide to function calling / tools |

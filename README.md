@@ -5,12 +5,12 @@
 # apcore-mcp
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Python Version](https://img.shields.io/badge/python-3.11%2B-blue)](https://github.com/aipartnerup/apcore-mcp-python)
-[![TypeScript Version](https://img.shields.io/badge/TypeScript-Node_18%2B-blue)](https://github.com/aipartnerup/apcore-mcp-typescript)
+[![Python Version](https://img.shields.io/badge/python-3.11%2B-blue)](https://github.com/aiperceivable/apcore-mcp-python)
+[![TypeScript Version](https://img.shields.io/badge/TypeScript-Node_18%2B-blue)](https://github.com/aiperceivable/apcore-mcp-typescript)
 
 > **Build once, invoke by Code or AI.**
 
-**apcore-mcp** turns any [apcore](https://github.com/aipartnerup/apcore)-based project into an [MCP Server](https://modelcontextprotocol.io/) and [OpenAI tool](https://platform.openai.com/docs/guides/function-calling) provider — with **zero code changes** to your existing project.
+**apcore-mcp** turns any [apcore](https://github.com/aiperceivable/apcore)-based project into an [MCP Server](https://modelcontextprotocol.io/) and [OpenAI tool](https://platform.openai.com/docs/guides/function-calling) provider — with **zero code changes** to your existing project.
 
 ```
 ┌──────────────────┐
@@ -143,7 +143,7 @@ apcore-mcp acts as a protocol-specific adapter on top of the apcore Registry, ma
 
 ## Documentation
 
-- **[Full Documentation Site](https://aipartnerup.github.io/apcore-mcp/)**
+- **[Full Documentation Site](https://aiperceivable.github.io/apcore-mcp/)**
 - **[Getting Started Guide](docs/getting-started.md)** — Installation and basic setup
 - [Feature Specs Overview](docs/features/overview.md) — All feature specifications
 - [Specifications (PRD, TDD, SRS)](docs/spec/)
@@ -154,8 +154,8 @@ apcore-mcp acts as a protocol-specific adapter on top of the apcore Registry, ma
 
 | Language | Repository | Package | Status |
 |----------|-----------|---------|--------|
-| Python | [apcore-mcp-python](https://github.com/aipartnerup/apcore-mcp-python) | `pip install apcore-mcp` | ✅ v0.10.x |
-| TypeScript | [apcore-mcp-typescript](https://github.com/aipartnerup/apcore-mcp-typescript) | `npm install apcore-mcp` | ✅ v0.10.x |
+| Python | [apcore-mcp-python](https://github.com/aiperceivable/apcore-mcp-python) | `pip install apcore-mcp` | ✅ v0.10.x |
+| TypeScript | [apcore-mcp-typescript](https://github.com/aiperceivable/apcore-mcp-typescript) | `npm install apcore-mcp` | ✅ v0.10.x |
 | Go | apcore-mcp-go | — | Planned |
 
 ## License

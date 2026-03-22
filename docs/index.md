@@ -2,7 +2,7 @@
 
 Automatic MCP Server & OpenAI Tools Bridge for apcore.
 
-**apcore-mcp** turns any [apcore](https://github.com/aipartnerup/apcore)-based project into an MCP Server and OpenAI tool provider — with **zero code changes** to your existing project.
+**apcore-mcp** turns any [apcore](https://github.com/aiperceivable/apcore)-based project into an MCP Server and OpenAI tool provider — with **zero code changes** to your existing project.
 
 ```mermaid
 graph TD
@@ -24,8 +24,8 @@ If you have already built modules using the `apcore` framework (which focuses on
 
 | Language | Repository | Package | Status |
 |----------|-----------|---------|--------|
-| **Python** | [apcore-mcp-python](https://github.com/aipartnerup/apcore-mcp-python) | `pip install apcore-mcp` |  ✅  |
-| **TypeScript** | [apcore-mcp-typescript](https://github.com/aipartnerup/apcore-mcp-typescript) | `npm install apcore-mcp` |  ✅  |
+| **Python** | [apcore-mcp-python](https://github.com/aiperceivable/apcore-mcp-python) | `pip install apcore-mcp` |  ✅  |
+| **TypeScript** | [apcore-mcp-typescript](https://github.com/aiperceivable/apcore-mcp-typescript) | `npm install apcore-mcp` |  ✅  |
 | **Go** | apcore-mcp-go | — | Planned |
 
 ## Core Features
