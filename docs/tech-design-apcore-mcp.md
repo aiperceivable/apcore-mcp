@@ -280,7 +280,7 @@ graph TB
 - Hyphen `-` is unambiguous: apcore module IDs do not use hyphens by convention.
 - The mapping is bijective (reversible), which is critical if the user needs to dispatch OpenAI tool calls back to the Executor.
 
-**Consequences:** All OpenAI-facing tool names use `-` instead of `.`. The `ModuleIDNormalizer` class provides both `normalize()` and `denormalize()` methods. MCP tool names retain the original dot notation (MCP has no character restrictions on tool names).
+**Consequences:** All OpenAI-facing tool names use `-` instead of `.`. The `ModuleIDNormalizer` class provides both `normalize()` and `denormalize()` methods. MCP tool names now come from `display.mcp.alias` when present (pre-sanitized by `DisplayResolver` to `[a-zA-Z_][a-zA-Z0-9_-]*`, ≤ 64 chars), with `module_id` as fallback (auto-sanitized: dots → underscores).
 
 #### ADR-04: Schema $ref Inlining for MCP/OpenAI Compatibility
 
@@ -1143,8 +1143,8 @@ class MCPServerFactory:
         """Build an MCP Tool object from an apcore ModuleDescriptor.
 
         Mapping:
-            descriptor.module_id       -> Tool.name
-            descriptor.description     -> Tool.description
+            descriptor.metadata["display"]["mcp"]["alias"] or descriptor.module_id  -> Tool.name
+            descriptor.metadata["display"]["mcp"]["description"] (+ guidance suffix) or descriptor.description  -> Tool.description
             descriptor.input_schema    -> Tool.inputSchema (after $ref inlining)
             descriptor.output_schema   -> Tool.outputSchema (after $ref inlining)
             descriptor.annotations     -> Tool.annotations (via AnnotationMapper)
