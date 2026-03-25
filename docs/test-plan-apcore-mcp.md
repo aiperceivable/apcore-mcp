@@ -19,7 +19,9 @@
 
 This document defines the comprehensive test plan and test cases for **apcore-mcp**, the automatic MCP Server and OpenAI Tools Bridge for the apcore ecosystem. As a greenfield project developed under TDD strict mode, this test plan establishes the testing standard before any implementation code is written. Every test case defined here will be implemented as executable pytest code prior to the corresponding production code.
 
-The scope covers 21 PRD features (F-001 through F-020, F-026) across 10 architectural components: Schema Converter, Annotation Mapper, Execution Router, Error Mapper, MCP Server Factory, OpenAI Converter, Transport Manager, CLI Module, Dynamic Registry Listener, and MCP Tool Explorer. Testing spans five levels: unit, integration, end-to-end, performance, and security.
+The scope covers 27 PRD features (F-001 through F-020, F-026 through F-032) across 13 architectural components: Schema Converter, Annotation Mapper, Execution Router, Error Mapper, MCP Server Factory, OpenAI Converter, Transport Manager, CLI Module, Dynamic Registry Listener, MCP Tool Explorer, JWT Authentication, Approval Handler, and Custom Output Formatter. Testing spans five levels: unit, integration, end-to-end, performance, and security.
+
+> **Note:** Test cases for F-027 (JWT Authentication), F-028 (Approval System), F-029 (AI Guidance Fields), F-030 (AI Intent Metadata), F-031 (Streaming Annotations), and F-032 (Custom Output Formatter) are pending addition. See CHANGELOG v0.7.0–v0.10.0 for feature specifications.
 
 ### 1.2 Test Objectives
 

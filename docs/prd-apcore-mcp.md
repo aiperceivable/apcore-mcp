@@ -1069,10 +1069,10 @@ for tool_call in response.choices[0].message.tool_calls:
 
 | Dependency | Version Constraint | Risk | Mitigation |
 |------------|-------------------|------|------------|
-| `apcore` (apcore-python) | >= 0.2.0 | API changes in pre-1.0 SDK | apcore API is declared stable; pin to compatible range; test against latest |
+| `apcore` (apcore-python) | >= 0.14.0 | API changes in pre-1.0 SDK | apcore API is declared stable; pin to compatible range; test against latest |
 | `mcp` (official MCP SDK) | >= 1.0.0 | SDK breaking changes; transport API changes | Pin to compatible range; the SDK is mature; transport API is stable |
 | `openai` (optional) | Not required | N/A -- `to_openai_tools()` produces plain dicts | No runtime dependency |
-| Python | >= 3.10 | Minimum version for modern type hints and `match` statements | Align with apcore-python's minimum Python version |
+| Python | >= 3.11 | Minimum version for modern type hints and `match` statements | Align with apcore-python's minimum Python version |
 
 ### 8.4 Performance Requirements
 
@@ -1118,7 +1118,7 @@ for tool_call in response.choices[0].message.tool_calls:
 2. The `mcp` Python SDK provides stable APIs for tool registration, transport configuration, and error handling.
 3. MCP clients (Claude Desktop, Cursor) correctly implement the MCP protocol for tool discovery and invocation.
 4. apcore modules produce JSON-serializable output dicts from their `execute()` methods.
-5. The target deployment environment has Python >= 3.10 installed.
+5. The target deployment environment has Python >= 3.11 installed.
 
 ---
 

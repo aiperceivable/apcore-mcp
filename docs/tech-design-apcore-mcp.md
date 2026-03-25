@@ -64,11 +64,11 @@ apcore modules carry rich, machine-readable metadata -- `input_schema` (JSON Sch
 
 ### 2.1 PRD Summary
 
-The PRD (`docs/prd-apcore-mcp.md` v1.0) defines 25 features across three priority tiers:
+The PRD (`docs/prd-apcore-mcp.md` v1.4) defines 32 features across three priority tiers:
 
 - **P0 (9 features, F-001 through F-009):** Core schema mapping, annotation mapping, execution routing, error mapping, `serve()` function, stdio/Streamable HTTP transports, `to_openai_tools()`, CLI entry point.
 - **P1 (7 features, F-010 through F-016):** SSE transport, OpenAI annotation embedding, OpenAI strict mode, structured output, Executor passthrough, dynamic tool registration, logging.
-- **P2 (9 features, F-017 through F-025):** Filtering for `to_openai_tools()` and `serve()`, health check endpoint, MCP resource exposure, Prometheus metrics endpoint, metrics collector parameter, input validation parameter, streaming and progress support, MCPServer background wrapper.
+- **P2 (16 features, F-017 through F-032):** Filtering for `to_openai_tools()` and `serve()`, health check endpoint, MCP resource exposure, Prometheus metrics endpoint, metrics collector parameter, input validation parameter, streaming and progress support, MCPServer background wrapper, MCP Tool Explorer, JWT authentication, approval system, AI guidance fields, AI intent metadata, streaming annotations, custom output formatter.
 
 ### 2.2 Design-to-PRD Traceability Matrix
 
@@ -94,6 +94,11 @@ The PRD (`docs/prd-apcore-mcp.md` v1.0) defines 25 features across three priorit
 | MCPServer Background Wrapper | F-025                       | P2       |
 | MCP Tool Explorer            | F-026                       | P2       |
 | JWT Authentication           | F-027                       | P2       |
+| Approval Handler             | F-028                       | P2       |
+| AI Guidance Fields           | F-029                       | P2       |
+| AI Intent Metadata           | F-030                       | P2       |
+| Streaming Annotations        | F-031                       | P2       |
+| Custom Output Formatter      | F-032                       | P2       |
 
 ### 2.3 Key Constraints from User Requirements
 
@@ -1910,6 +1915,16 @@ def serve(
     validate_inputs: bool = False,
     metrics_collector: MetricsExporter | None = None,
     authenticator: Authenticator | None = None,
+    require_auth: bool = True,
+    exempt_paths: set[str] | None = None,
+    approval_handler: object | None = None,
+    explorer: bool = False,
+    explorer_prefix: str = "/explorer",
+    allow_execute: bool = False,
+    explorer_title: str = "MCP Tool Explorer",
+    explorer_project_name: str | None = None,
+    explorer_project_url: str | None = None,
+    output_formatter: Callable[[dict], str] | None = None,
 ) -> None:
     """Launch an MCP Server exposing all apcore modules as tools.
 
@@ -1995,6 +2010,62 @@ def serve(
             Validation: Must be one of the allowed values (case-insensitive).
                 Raises ValueError for unknown level.
 
+        require_auth:
+            Type: bool
+            Default: True
+            Description: When True and an authenticator is provided, unauthenticated
+                requests receive 401. When False, unauthenticated requests proceed
+                without identity (permissive mode).
+
+        exempt_paths:
+            Type: set[str] | None
+            Default: None (defaults to {"/health", "/metrics"} internally)
+            Description: Paths that bypass authentication entirely.
+
+        approval_handler:
+            Type: object | None
+            Default: None
+            Description: An approval handler (e.g., ElicitationApprovalHandler) passed
+                through to the Executor for runtime approval elicitation.
+
+        explorer:
+            Type: bool
+            Default: False
+            Description: When True and transport is HTTP-based, mount the Tool Explorer
+                browser UI at explorer_prefix.
+
+        explorer_prefix:
+            Type: str
+            Default: "/explorer"
+            Description: URL prefix for the Tool Explorer UI.
+
+        allow_execute:
+            Type: bool
+            Default: False
+            Description: When True, the Tool Explorer UI can execute tools via POST.
+
+        explorer_title:
+            Type: str
+            Default: "MCP Tool Explorer"
+            Description: Title displayed in the Tool Explorer UI header.
+
+        explorer_project_name:
+            Type: str | None
+            Default: None
+            Description: Project name displayed in the Tool Explorer UI.
+
+        explorer_project_url:
+            Type: str | None
+            Default: None
+            Description: Project URL linked from the Tool Explorer UI.
+
+        output_formatter:
+            Type: Callable[[dict], str] | None
+            Default: None (raw JSON serialization)
+            Description: Custom formatter for tool execution output. When provided,
+                the ExecutionRouter calls this function instead of json.dumps() to
+                serialize the module output dict to a string.
+
     Returns:
         None. This function blocks until the server is shut down.
 
@@ -2017,6 +2088,75 @@ def serve(
         serve(registry, tags=["public"], prefix="api.")
     """
 ```
+
+### 7.1a `async_serve()` Function
+
+**File:** `src/apcore_mcp/__init__.py`
+
+**Traces to:** FR-SERVER-012
+
+```python
+@asynccontextmanager
+async def async_serve(
+    registry_or_executor: Registry | Executor,
+    *,
+    name: str = "apcore-mcp",
+    version: str | None = None,
+    tags: list[str] | None = None,
+    prefix: str | None = None,
+    log_level: str | None = None,
+    validate_inputs: bool = False,
+    metrics_collector: MetricsExporter | None = None,
+    authenticator: Authenticator | None = None,
+    require_auth: bool = True,
+    exempt_paths: set[str] | None = None,
+    approval_handler: object | None = None,
+    explorer: bool = False,
+    explorer_prefix: str = "/explorer",
+    allow_execute: bool = False,
+    explorer_title: str = "MCP Tool Explorer",
+    explorer_project_name: str | None = None,
+    explorer_project_url: str | None = None,
+    output_formatter: Callable[[dict], str] | None = None,
+) -> AsyncIterator[Starlette]:
+    """Yield an ASGI application for embedding MCP in a larger app.
+
+    This is an async context manager that creates and yields a Starlette
+    ASGI application configured with MCP Streamable HTTP transport, Tool
+    Explorer (if enabled), health endpoint, and authentication middleware.
+    The caller is responsible for binding the application to a host and port.
+
+    Accepts the same parameters as serve() except transport, host, port,
+    on_startup, on_shutdown, and dynamic — the transport is always
+    Streamable HTTP for embedded use.
+
+    Returns:
+        AsyncIterator[Starlette]: A Starlette application instance with
+        all MCP routes mounted. The application is usable until the
+        context manager exits.
+
+    Raises:
+        TypeError: If registry_or_executor is not a Registry or Executor.
+
+    Examples:
+        # Basic embedded usage
+        async with async_serve(registry) as app:
+            config = uvicorn.Config(app, host="0.0.0.0", port=8000)
+            server = uvicorn.Server(config)
+            await server.serve()
+
+        # With explorer enabled
+        async with async_serve(registry, explorer=True) as app:
+            ...
+    """
+```
+
+**Intentional Language Differences:**
+
+| Aspect | Python | TypeScript | Rust |
+|--------|--------|------------|------|
+| Return type | `AsyncIterator[Starlette]` (async context manager) | `Promise<AsyncServeApp>` with `{ handler, close() }` | `Result<Router, APCoreMCPError>` (axum Router) |
+| Cleanup | Automatic via context manager exit | Explicit `close()` call | Caller manages Router lifecycle |
 
 ### 7.2 `to_openai_tools()` Function
 
