@@ -1758,7 +1758,7 @@ class AuthMiddleware:
 - **factory.py:** `handle_call_tool` reads `auth_identity_var.get()` and adds to `extra["identity"]`.
 - **router.py:** `handle_call()` extracts `identity = extra.get("identity")` and passes to `Context.create(data=context_data, identity=identity)`.
 - **`serve()` / `MCPServer`:** Accept `authenticator` parameter, build middleware list when authenticator is provided + HTTP transport.
-- **CLI:** `--jwt-secret`, `--jwt-algorithm`, `--jwt-audience`, `--jwt-issuer`, `--jwt-key-file` (Python), `--jwt-require-auth`, `--exempt-paths` flags. Python CLI also reads `JWT_SECRET` env var as fallback.
+- **CLI:** `--jwt-secret`, `--jwt-algorithm`, `--jwt-audience`, `--jwt-issuer`, `--jwt-key-file` (Python), `--jwt-require-auth`, `--exempt-paths` flags. Python CLI also reads `APCORE_JWT_SECRET` env var as fallback.
 
 **Explorer + JWT dual auth pattern (cross-reference §6.10):**
 

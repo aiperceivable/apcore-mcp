@@ -2548,7 +2548,7 @@ Authenticator.authenticate(headers: dict[str, str]) -> Identity | None
 | `--jwt-require-auth` / `--no-jwt-require-auth` | `bool` | `True` | Require JWT auth; `False` enables permissive mode |
 | `--exempt-paths` | `str` | `None` | Comma-separated paths exempt from auth |
 
-**Behavior:** When `--jwt-secret` (or `--jwt-key-file` in Python, or `JWT_SECRET` env var) is provided, a `JWTAuthenticator` is created and passed to `serve(authenticator=...)`. Key resolution order: `--jwt-key-file` → `--jwt-secret` → `JWT_SECRET` env var.
+**Behavior:** When `--jwt-secret` (or `--jwt-key-file` in Python, or `APCORE_JWT_SECRET` env var) is provided, a `JWTAuthenticator` is created and passed to `serve(authenticator=...)`. Key resolution order: `--jwt-key-file` → `--jwt-secret` → `APCORE_JWT_SECRET` env var.
 
 ---
 
