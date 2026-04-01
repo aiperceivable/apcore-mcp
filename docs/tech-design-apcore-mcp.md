@@ -3,12 +3,12 @@
 | Field       | Value                                                                    |
 |-------------|--------------------------------------------------------------------------|
 | Title       | apcore-mcp: Automatic MCP Server & OpenAI Tools Bridge                   |
-| Version     | 1.4                                                                      |
-| Date        | 2026-03-02                                                               |
+| Version     | 1.5                                                                      |
+| Date        | 2026-03-31                                                               |
 | Author      | aiperceivable Engineering Team                                             |
 | Status      | Draft                                                                    |
 | Reviewers   | apcore Core Maintainers, Community Contributors                          |
-| PRD Ref     | `docs/prd-apcore-mcp.md` v1.3                                           |
+| PRD Ref     | `docs/prd-apcore-mcp.md` v1.5                                           |
 | License     | Apache 2.0                                                               |
 
 ---
@@ -64,11 +64,11 @@ apcore modules carry rich, machine-readable metadata -- `input_schema` (JSON Sch
 
 ### 2.1 PRD Summary
 
-The PRD (`docs/prd-apcore-mcp.md` v1.4) defines 32 features across three priority tiers:
+The PRD (`docs/prd-apcore-mcp.md` v1.5) defines 35 features across three priority tiers:
 
 - **P0 (9 features, F-001 through F-009):** Core schema mapping, annotation mapping, execution routing, error mapping, `serve()` function, stdio/Streamable HTTP transports, `to_openai_tools()`, CLI entry point.
-- **P1 (7 features, F-010 through F-016):** SSE transport, OpenAI annotation embedding, OpenAI strict mode, structured output, Executor passthrough, dynamic tool registration, logging.
-- **P2 (16 features, F-017 through F-032):** Filtering for `to_openai_tools()` and `serve()`, health check endpoint, MCP resource exposure, Prometheus metrics endpoint, metrics collector parameter, input validation parameter, streaming and progress support, MCPServer background wrapper, MCP Tool Explorer, JWT authentication, approval system, AI guidance fields, AI intent metadata, streaming annotations, custom output formatter.
+- **P1 (8 features, F-010 through F-016, F-032):** SSE transport, OpenAI annotation embedding, OpenAI strict mode, structured output, Executor passthrough, dynamic tool registration, logging, custom output formatter.
+- **P2 (18 features, F-017 through F-031, F-033 through F-035):** Filtering for `to_openai_tools()` and `serve()`, health check endpoint, MCP resource exposure, Prometheus metrics endpoint, metrics collector parameter, input validation parameter, streaming and progress support, MCPServer background wrapper, MCP Tool Explorer, JWT authentication, approval system, AI guidance fields, AI intent metadata, streaming annotations, Config Bus namespace registration, Error Formatter Registry integration, dot-namespaced event types.
 
 ### 2.2 Design-to-PRD Traceability Matrix
 
@@ -99,6 +99,9 @@ The PRD (`docs/prd-apcore-mcp.md` v1.4) defines 32 features across three priorit
 | AI Intent Metadata           | F-030                       | P2       |
 | Streaming Annotations        | F-031                       | P2       |
 | Custom Output Formatter      | F-032                       | P2       |
+| Config Bus Namespace         | F-033                       | P2       |
+| Error Formatter Registry     | F-034                       | P2       |
+| Dot-Namespaced Events        | F-035                       | P2       |
 
 ### 2.3 Key Constraints from User Requirements
 
@@ -1031,6 +1034,12 @@ class ErrorMapper:
         | CallDepthExceededError          | "Call depth limit exceeded"                |
         | CircularCallError               | "Circular call detected"                   |
         | CallFrequencyExceededError      | "Call frequency limit exceeded"            |
+        | ConfigNamespaceDuplicateError   | "Config namespace already registered: {ns}"|
+        | ConfigNamespaceReservedError    | "Config namespace reserved: {ns}"          |
+        | ConfigEnvPrefixConflictError    | "Config env prefix conflict: {prefix}"     |
+        | ConfigMountError               | "Config mount failed: {message}"           |
+        | ConfigBindError                | "Config bind failed: {message}"            |
+        | ErrorFormatterDuplicateError    | "Error formatter already registered: {id}" |
         | Any other ModuleError           | "Module error: {error.code}"               |
         | Any non-ModuleError Exception   | "Internal error occurred"                  |
         +---------------------------------+--------------------------------------------+
@@ -2896,7 +2905,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-    "apcore>=0.5.0,<1.0",
+    "apcore>=0.15.1,<1.0",
     "mcp>=1.0.0,<2.0",
     "PyJWT>=2.0",
 ]

@@ -4,12 +4,12 @@
 |-------------|--------------------------------------------------------------------------|
 | Title       | apcore-mcp: Automatic MCP Server & OpenAI Tools Bridge                   |
 | Document    | Software Requirements Specification (SRS)                                |
-| Version     | 1.5                                                                      |
-| Date        | 2026-03-13                                                               |
+| Version     | 1.6                                                                      |
+| Date        | 2026-03-31                                                               |
 | Author      | aiperceivable Engineering Team                                             |
 | Status      | Draft                                                                    |
-| PRD Ref     | `docs/prd-apcore-mcp.md` v1.3                                           |
-| Tech Design | `docs/tech-design-apcore-mcp.md` v1.3                                   |
+| PRD Ref     | `docs/prd-apcore-mcp.md` v1.5                                           |
+| Tech Design | `docs/tech-design-apcore-mcp.md` v1.5                                   |
 | Standard    | IEEE 830 / ISO/IEC/IEEE 29148                                            |
 
 ---
@@ -24,6 +24,7 @@
 | 1.3     | 2026-02-27 | aiperceivable Engineering Team | JWT Authentication (F-027): Authenticator protocol, JWTAuthenticator, AuthMiddleware |
 | 1.4     | 2026-03-02 | aiperceivable Engineering Team | Approval system (F-028), AI guidance fields, AI intent metadata, streaming annotations |
 | 1.5     | 2026-03-13 | aiperceivable Engineering Team | Sync update: async_serve(), ExecutionCancelledError, updated serve() signature, Python >= 3.11, apcore >= 0.13.0, new annotation fields |
+| 1.6     | 2026-03-31 | aiperceivable Engineering Team | apcore 0.15.0 upgrade: Config Bus namespace (F-033), Error Formatter Registry (F-034), dot-namespaced events (F-035), 6 new error codes, apcore >= 0.15.1 |
 
 ---
 
@@ -2997,12 +2998,12 @@ Workflow Hints: ...
 | Field | Value |
 |-------|-------|
 | **ID** | NFR-COMPAT-002 |
-| **Title** | Compatible with apcore-python >= 0.13.0 |
-| **Target** | apcore >= 0.13.0, < 1.0 |
+| **Title** | Compatible with apcore-python >= 0.15.0 |
+| **Target** | apcore >= 0.15.1, < 1.0 |
 | **Measurement** | Integration tests against latest apcore-python release |
 | **Traces to** | PRD Section 8.3 |
 
-**Description:** apcore-mcp shall declare a dependency on `apcore>=0.13.0,<1.0` and shall be tested against the latest release within that range.
+**Description:** apcore-mcp shall declare a dependency on `apcore>=0.15.0,<1.0` and shall be tested against the latest release within that range. Version 0.15.0 is required for Config Bus namespace registration (§9.4), Error Formatter Registry (§8.8), and dot-namespaced event types (§9.16).
 
 ---
 

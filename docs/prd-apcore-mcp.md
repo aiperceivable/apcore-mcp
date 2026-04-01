@@ -3,8 +3,8 @@
 | Field       | Value                                                        |
 |-------------|--------------------------------------------------------------|
 | Title       | apcore-mcp: Automatic MCP Server & OpenAI Tools Bridge       |
-| Version     | 1.4                                                          |
-| Date        | 2026-03-02                                                   |
+| Version     | 1.5                                                          |
+| Date        | 2026-03-31                                                   |
 | Author      | aiperceivable Product Team                                     |
 | Status      | Draft                                                        |
 | Reviewers   | apcore Core Maintainers, Community Contributors              |
@@ -910,14 +910,71 @@ The wire format uses camelCase (`retryable`, `aiGuidance`, `userFixable`, `sugge
 
 ---
 
+#### F-033: Config Bus Namespace Registration
+
+**Title:** Register `mcp` namespace with apcore Config Bus
+
+**Description:** At startup, apcore-mcp registers an `mcp` namespace with the apcore Config Bus (`Config.register_namespace()`) using `APCORE_MCP` as the environment variable prefix. This allows MCP-specific configuration (transport, host, port, auth settings, explorer options) to be managed through the unified `apcore.yaml` configuration file alongside other apcore packages. The adapter also reads from the `observability` namespace for logging defaults instead of using independent configuration.
+
+**User Story:** As a developer, I want all apcore-mcp configuration to live in a single `apcore.yaml` file alongside my other apcore settings, so that I don't need to manage separate config files for each adapter.
+
+**Acceptance Criteria:**
+1. `serve()` and `async_serve()` register an `mcp` namespace with JSON Schema validation and `APCORE_MCP` env prefix.
+2. Configuration keys include: `transport`, `host`, `port`, `auth.enabled`, `auth.jwt_secret`, `explorer.enabled`.
+3. Logging configuration falls back to the `observability` namespace when available.
+4. `config.get("mcp.transport")` returns the configured transport type.
+5. Environment variables like `APCORE_MCP_TRANSPORT=streamable-http` override YAML values.
+6. Available in Python, TypeScript, and Rust implementations.
+
+**Priority:** P2
+
+---
+
+#### F-034: Error Formatter Registry Integration
+
+**Title:** Register MCP-specific error formatter with the Error Formatter Registry
+
+**Description:** apcore-mcp registers an MCP-specific `ErrorFormatter` implementation with apcore's Error Formatter Registry (§8.8). This formalizes the existing `ErrorMapper` logic into the shared protocol, ensuring consistent error formatting across the ecosystem while preserving MCP-specific conventions (camelCase field names, MCP error code sanitization).
+
+**User Story:** As an ecosystem developer, I want apcore-mcp's error formatting to be discoverable and consistent with other adapters, so that error handling conventions are explicit rather than ad-hoc.
+
+**Acceptance Criteria:**
+1. apcore-mcp registers an `ErrorFormatter` with the registry at startup.
+2. The formatter produces camelCase wire keys (`aiGuidance`, `userFixable`) per MCP convention.
+3. The formatter handles all error codes including the 6 new Config Bus error codes.
+4. Registration is idempotent — duplicate registration logs a warning rather than crashing.
+5. Available in Python, TypeScript, and Rust implementations.
+
+**Priority:** P2
+
+---
+
+#### F-035: Dot-Namespaced Event Types
+
+**Title:** Migrate to dot-namespaced event type convention
+
+**Description:** apcore-mcp exports canonical dot-namespaced event type constants from apcore 0.15.0 (§9.16) for consumer use. The `RegistryListener` currently uses callback-based `registry.on("register")` which is unaffected by the event renaming. Future event emissions by apcore-mcp will use the `apcore-mcp.*` prefix convention.
+
+**User Story:** As a developer subscribing to apcore events, I want consistent dot-namespaced event name constants available from apcore-mcp, so that I can subscribe to canonical event types without hardcoding strings.
+
+**Acceptance Criteria:**
+1. Canonical event type constants exported (`APCORE_EVENTS` in TypeScript, equivalent in Python/Rust).
+2. Constants include: `apcore.module.toggled`, `apcore.module.reloaded`, `apcore.config.updated`, `apcore.health.recovered`.
+3. Existing `RegistryListener` callback subscriptions (`"register"`, `"unregister"`) are unchanged (not affected by event renaming).
+4. Available in Python, TypeScript, and Rust implementations.
+
+**Priority:** P2
+
+---
+
 **Feature Count Summary:**
 
 | Priority | Count | Features |
 |----------|-------|----------|
 | P0       | 9     | F-001 through F-009 |
 | P1       | 8     | F-010 through F-016, F-032 |
-| P2       | 15    | F-017 through F-031 |
-| **Total**| **32**|                      |
+| P2       | 18    | F-017 through F-031, F-033 through F-035 |
+| **Total**| **35**|                      |
 
 ---
 
