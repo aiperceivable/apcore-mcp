@@ -1,0 +1,97 @@
+{
+  "description": "Standard mapping from apcore Module to MCP Tool (Algorithm M01)",
+  "test_cases": [
+    {
+      "id": "basic_module_mapping",
+      "input_module": {
+        "module_id": "executor.email.send_email",
+        "description": "Send an email via SMTP",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "to": { "type": "string" },
+            "subject": { "type": "string" }
+          },
+          "required": ["to"]
+        },
+        "annotations": {
+          "readonly": false,
+          "cacheable": false
+        }
+      },
+      "expected_mcp_tool": {
+        "name": "executor-email-send_email",
+        "description": "Send an email via SMTP",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "to": { "type": "string" },
+            "subject": { "type": "string" }
+          },
+          "required": ["to"],
+          "additionalProperties": false
+        },
+        "annotations": {
+          "cacheable": false
+        }
+      }
+    },
+    {
+      "id": "llm_description_priority",
+      "input_module": {
+        "module_id": "auth.login",
+        "description": "Human description",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "token": {
+              "type": "string",
+              "description": "Short desc",
+              "x-llm-description": "Long AI-specific description of the token"
+            }
+          }
+        }
+      },
+      "expected_mcp_tool": {
+        "name": "auth-login",
+        "description": "Human description",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "token": {
+              "type": "string",
+              "description": "Long AI-specific description of the token"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "strip_x_extensions",
+      "input_module": {
+        "module_id": "data.query",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "sql": {
+              "type": "string",
+              "x-sensitive": true,
+              "x-internal-flag": "secret"
+            }
+          }
+        }
+      },
+      "expected_mcp_tool": {
+        "name": "data-query",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "sql": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  ]
+}
