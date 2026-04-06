@@ -92,6 +92,58 @@
           }
         }
       }
+    },
+    {
+      "id": "redacted_output_sensitive_field",
+      "description": "Output redaction replaces x-sensitive field values with REDACTED (F-038)",
+      "input_module": {
+        "module_id": "auth.get_token",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "username": { "type": "string" }
+          }
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "token": { "type": "string", "x-sensitive": true },
+            "expires_at": { "type": "string" }
+          }
+        }
+      },
+      "test_output": {
+        "token": "secret-jwt-token-123",
+        "expires_at": "2026-04-06T12:00:00Z"
+      },
+      "expected_redacted_output": {
+        "token": "***REDACTED***",
+        "expires_at": "2026-04-06T12:00:00Z"
+      }
+    },
+    {
+      "id": "extra_annotation_mcp_prefix_passthrough",
+      "description": "mcp_ prefixed keys from annotations.extra flow to tool description (F-041)",
+      "input_module": {
+        "module_id": "image.resize",
+        "description": "Resize an image",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "width": { "type": "integer" }
+          }
+        },
+        "annotations": {
+          "readonly": false,
+          "extra": {
+            "mcp_category": "image",
+            "mcp_cost": "high",
+            "internal_flag": "ignored"
+          }
+        }
+      },
+      "expected_description_contains": ["category: image", "cost: high"],
+      "expected_description_not_contains": ["internal_flag", "ignored"]
     }
   ]
 }

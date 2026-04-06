@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-04-06
+
+### Added
+
+- **6 new features (F-036 through F-041)** fully leveraging apcore 0.17.1:
+  - **Pipeline Strategy Selection** (F-036, P1) — `serve(strategy="standard"|"internal"|"testing"|"performance"|"minimal")` parameter, CLI `--strategy` flag, and Config Bus `mcp.pipeline.strategy`.
+  - **Pipeline Observability** (F-037, P2) — `serve(trace=True)` enables `call_async_with_trace()`; `PipelineTrace` data in `_meta.trace` response, Explorer, and MetricsCollector.
+  - **Tool Output Redaction** (F-038, P1) — `redact_sensitive(output, output_schema)` applied by default before serialization. Fields with `x-sensitive` or `_secret_*` keys replaced with `"***REDACTED***"`.
+  - **Tool Preflight Validation** (F-039, P2) — `ExecutionRouter.validate_tool()` and Explorer `POST /validate` endpoint for dry-run via `Executor.validate()`.
+  - **YAML Pipeline Configuration** (F-040, P2) — Config Bus `mcp.pipeline` section for declarative pipeline customization via `build_strategy_from_config()`.
+  - **Annotation Metadata Passthrough** (F-041, P2) — `ModuleAnnotations.extra` keys prefixed with `mcp_` flow to tool descriptions and Explorer.
+- **4 new error mappings** — `ConfigEnvMapConflictError`, `PipelineAbortError`, `StepNotFoundError`, `VersionIncompatibleError`.
+- **RegistryListener wired to `serve(dynamic=True)`** — dynamic tool registration now operational.
+
+### Changed
+
+- **Dependency bump**: requires `apcore >= 0.17.1` (was `>= 0.15.1`) for Pipeline v2 delegation, step metadata, YAML pipeline configuration, `build_minimal_strategy()`, `requires`/`provides` on BaseStep, and sensitive field redaction.
+- **Pipeline v2 alignment** — 11-step pipeline with `call_chain_guard` (renamed from `safety_check`), middleware before input validation.
+- Updated PRD to v1.7 (41 features), SRS to v1.8 (127 requirements), Tech Design to v1.7, Test Plan to v1.6.
+- Feature count: P0=9, P1=11, P2=21, Total=41.
+
+---
+
 ## [0.12.0] - 2026-03-31
 
 ### Added

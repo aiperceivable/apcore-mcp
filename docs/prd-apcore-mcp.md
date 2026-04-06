@@ -3,8 +3,8 @@
 | Field       | Value                                                        |
 |-------------|--------------------------------------------------------------|
 | Title       | apcore-mcp: Automatic MCP Server & OpenAI Tools Bridge       |
-| Version     | 1.5                                                          |
-| Date        | 2026-03-31                                                   |
+| Version     | 1.7                                                          |
+| Date        | 2026-04-06                                                   |
 | Author      | aiperceivable Product Team                                     |
 | Status      | Draft                                                        |
 | Reviewers   | apcore Core Maintainers, Community Contributors              |
@@ -283,6 +283,10 @@ The `requires_approval` annotation is not a native MCP annotation but is preserv
 | `CallDepthExceededError`     | Internal error (safety limit)                           |
 | `CircularCallError`          | Internal error (safety limit)                           |
 | `CallFrequencyExceededError` | Internal error (safety limit)                           |
+| `ConfigEnvMapConflictError`  | Config env map conflict error                           |
+| `PipelineAbortError`         | Pipeline aborted error with step name                   |
+| `StepNotFoundError`          | Pipeline step not found error                           |
+| `VersionIncompatibleError`   | Version incompatible error                              |
 | Any unexpected `Exception`   | Internal error with sanitized message                   |
 
 **User Story:** As an AI agent builder, I want MCP error responses to contain clear, structured information about what went wrong, so that my AI client can recover gracefully or inform the user.
@@ -293,6 +297,7 @@ The `requires_approval` annotation is not a native MCP annotation but is preserv
 3. `ACLDeniedError` responses do not leak sensitive security information (no caller_id exposure unless explicitly configured).
 4. Unexpected exceptions produce a generic "Internal error" message without leaking stack traces to the MCP client.
 5. All error responses set `isError=true` in the MCP result.
+6. New apcore 0.16.0–0.17.0 error types (`ConfigEnvMapConflictError`, `PipelineAbortError`, `StepNotFoundError`, `VersionIncompatibleError`) are mapped to appropriate MCP error responses.
 
 **Priority:** P0
 
@@ -967,14 +972,138 @@ The wire format uses camelCase (`retryable`, `aiGuidance`, `userFixable`, `sugge
 
 ---
 
+#### F-036: Pipeline Strategy Selection
+
+**Title:** Configurable pipeline execution strategy for serve() and CLI
+
+**Description:** apcore 0.17.1 provides 5 preset execution strategies: `"standard"` (full 11-step pipeline), `"internal"` (no ACL/approval), `"testing"` (no ACL/approval/call-chain), `"performance"` (no middleware), `"minimal"` (4-step: context → lookup → execute → return, for pre-validated internal hot paths). apcore-mcp exposes strategy selection through `serve(strategy=...)`, `async_serve(strategy=...)`, CLI `--strategy` flag, and Config Bus `mcp.pipeline.strategy`. When `serve()` receives a `Registry` (not an `Executor`), it creates `Executor(registry, strategy=strategy)`. When it receives a pre-configured `Executor`, the `strategy` parameter is ignored with a WARNING log (the Executor already has a strategy set at construction time).
+
+**User Story:** As a module developer, I want to select a pipeline strategy (e.g., "testing" during development, "standard" in production), so that I can control which pipeline steps execute without writing custom Executor configuration.
+
+**Acceptance Criteria:**
+1. `serve(registry, strategy="testing")` creates an Executor with the testing strategy (no ACL/approval/call-chain steps).
+2. `serve(registry, strategy="performance")` creates an Executor with the performance strategy (no middleware).
+3. `serve(registry, strategy="internal")` creates an Executor with the internal strategy (no ACL/approval).
+4. `serve(registry)` without strategy uses `"standard"` (default, full 11-step pipeline).
+5. `serve(executor, strategy="testing")` logs WARNING "strategy parameter ignored when Executor is provided" and uses the Executor's own strategy.
+6. CLI: `python -m apcore_mcp --strategy testing` selects the testing strategy.
+7. Config Bus: `mcp.pipeline.strategy: "testing"` in apcore.yaml selects the strategy.
+8. Invalid strategy name raises `ValueError` with valid choices listed.
+
+**Priority:** P1
+
+---
+
+#### F-037: Pipeline Observability (Trace Exposure)
+
+**Title:** Expose pipeline execution traces via call_async_with_trace()
+
+**Description:** apcore 0.17.0 provides `Executor.call_async_with_trace()` which returns `tuple[dict, PipelineTrace]` containing per-step timing, skip reasons, and strategy name. When trace mode is enabled (via `serve(trace=True)` or Explorer with `allow_execute=True`), the `ExecutionRouter` uses `call_async_with_trace()` instead of `call_async()`. Trace data is (a) included in the MCP response `_meta` field when available, (b) logged at DEBUG level, (c) exposed in the Explorer tool execution detail view, and (d) sent to `metrics_collector` if provided.
+
+**User Story:** As a module developer debugging a slow tool call, I want to see per-step pipeline timing so that I can identify which pipeline step is the bottleneck.
+
+**Acceptance Criteria:**
+1. `serve(registry, trace=True)` enables trace mode; `ExecutionRouter` calls `call_async_with_trace()`.
+2. `PipelineTrace` data (`strategy_name`, `total_duration_ms`, per-step `name`/`duration_ms`/`skipped`/`skip_reason`) is included in `CallToolResult` `_meta.trace` when trace mode is enabled.
+3. When Explorer is enabled and `allow_execute=True`, trace data is included in the execution response JSON.
+4. When `metrics_collector` is provided and trace mode is enabled, per-step durations are reported to the collector.
+5. When trace mode is disabled (default), `ExecutionRouter` uses `call_async()` (no overhead).
+6. Trace data does not include sensitive information (no input/output data, only step metadata and timing).
+
+**Priority:** P2
+
+---
+
+#### F-038: Tool Output Redaction
+
+**Title:** Automatic redaction of sensitive fields in tool output
+
+**Description:** apcore 0.17.0 provides `redact_sensitive(data, schema_dict)` which replaces values of fields marked `x-sensitive: true` in the schema with `"***REDACTED***"`, and also redacts keys matching `_secret_*` prefix. The `ExecutionRouter` applies `redact_sensitive()` to the module output dict before serialization, using the module's `output_schema` as the schema reference. This is enabled by default and can be disabled via `serve(redact_output=False)`.
+
+**User Story:** As a security-conscious developer, I want tool outputs containing sensitive fields (passwords, tokens, API keys) to be automatically redacted before being sent to MCP clients, so that I don't accidentally leak secrets to AI agents.
+
+**Acceptance Criteria:**
+1. By default (`redact_output=True`), `ExecutionRouter` calls `redact_sensitive(output, output_schema)` before `json.dumps()`.
+2. Fields with `x-sensitive: true` in `output_schema` have their values replaced with `"***REDACTED***"`.
+3. Keys matching `_secret_*` prefix are redacted regardless of schema annotation.
+4. Nested sensitive fields are redacted (recursive schema traversal).
+5. `serve(registry, redact_output=False)` disables output redaction.
+6. If `output_schema` is empty `{}`, no redaction is performed (no schema to match against).
+7. Redaction does not modify the original output dict (operates on a copy).
+
+**Priority:** P1
+
+---
+
+#### F-039: Tool Preflight Validation
+
+**Title:** Dry-run validation of tool calls via Executor.validate()
+
+**Description:** apcore 0.17.0 provides `Executor.validate(module_id, inputs)` which runs the pipeline with `dry_run=True`, executing only `pure=True` steps (context creation, call-chain guard, module lookup, ACL check, input validation). It returns a `PreflightResult` with per-check pass/fail results. apcore-mcp exposes this as (a) an Explorer endpoint `POST /explorer/tools/<name>/validate` and (b) a programmatic `ExecutionRouter.validate_tool()` method. This enables clients to check whether a tool call would succeed before executing it, with zero side effects.
+
+**User Story:** As an AI agent builder, I want to validate a tool call before executing it, so that I can detect schema errors and ACL denials without triggering side effects.
+
+**Acceptance Criteria:**
+1. Explorer endpoint `POST /explorer/tools/<name>/validate` accepts the same arguments as `/call` and returns `PreflightResult` as JSON.
+2. `PreflightResult` includes per-check results: `module_id` (found/not found), `call_chain` (pass/fail), `acl` (pass/fail), `schema` (pass/fail with field-level details).
+3. Validation executes no side-effect steps (no module execution, no middleware, no output validation).
+4. `ExecutionRouter.validate_tool(tool_name, arguments)` returns `PreflightResult` directly.
+5. Validation endpoint is available when Explorer is enabled regardless of `allow_execute` setting.
+6. Invalid module_id returns `PreflightResult` with module_id check failed (not an HTTP error).
+
+**Priority:** P2
+
+---
+
+#### F-040: YAML Pipeline Configuration
+
+**Title:** Pipeline customization via YAML configuration
+
+**Description:** apcore 0.17.0 provides `build_strategy_from_config(pipeline_config, ...)` to build an `ExecutionStrategy` from a YAML configuration dict. apcore-mcp reads the `mcp.pipeline` section from Config Bus (apcore.yaml) and, when present, uses it to build a custom strategy. This integrates with `register_step_type()` for custom step registration. The pipeline config supports three sections: `remove` (list of step names to remove), `configure` (dict of step-name to config overrides like `timeout_ms`, `ignore_errors`), and `steps` (list of custom step definitions with `insert_before`/`insert_after` positioning).
+
+**User Story:** As an advanced user, I want to customize the pipeline (remove steps, add custom steps, configure timeouts) via YAML configuration, so that I can adapt the execution pipeline to my deployment without writing Python code.
+
+**Acceptance Criteria:**
+1. Config Bus `mcp.pipeline` section is read at startup when present.
+2. `remove: ["acl_check"]` removes the ACL step from the pipeline.
+3. `configure: { input_validation: { timeout_ms: 5000 } }` overrides step configuration.
+4. Custom steps defined in `steps` section are registered and positioned via `insert_before`/`insert_after`.
+5. When `strategy` parameter is also provided, the YAML pipeline config takes precedence (with WARNING log).
+6. Invalid YAML pipeline config raises `ValueError` at startup with descriptive message.
+7. When `mcp.pipeline` is absent, the default strategy is used.
+
+**Priority:** P2
+
+---
+
+#### F-041: Custom Annotation Metadata Passthrough
+
+**Title:** Pass ModuleAnnotations.extra keys with mcp_ prefix to MCP tool metadata
+
+**Description:** apcore 0.16.0 added `ModuleAnnotations.extra: dict[str, Any]` which captures unknown annotation keys via `from_dict()`. apcore-mcp reads keys prefixed with `mcp_` from `annotations.extra` and flows them into the tool metadata. The `mcp_` prefix is stripped in the output. These appear in (a) the MCP tool description as additional labeled lines, and (b) the Explorer tool detail view.
+
+**User Story:** As a module developer, I want to add MCP-specific metadata (category, cost tier, required permissions) to my module annotations without modifying the apcore-mcp package.
+
+**Acceptance Criteria:**
+1. `ModuleAnnotations(extra={"mcp_category": "image"})` produces metadata `category: "image"` in the tool's description suffix.
+2. Only keys with `mcp_` prefix are extracted; other `extra` keys are ignored.
+3. The `mcp_` prefix is stripped: `mcp_category` becomes `category` in the output.
+4. Values must be strings; non-string values are silently ignored.
+5. Extra metadata appears in Explorer tool detail view.
+6. Empty `extra` dict or no `mcp_` keys: no change to tool definition.
+
+**Priority:** P2
+
+---
+
 **Feature Count Summary:**
 
 | Priority | Count | Features |
 |----------|-------|----------|
 | P0       | 9     | F-001 through F-009 |
-| P1       | 8     | F-010 through F-016, F-032 |
-| P2       | 18    | F-017 through F-031, F-033 through F-035 |
-| **Total**| **35**|                      |
+| P1       | 11    | F-010 through F-016, F-032, F-036, F-038 |
+| P2       | 21    | F-017 through F-031, F-033 through F-035, F-037, F-039 through F-041 |
+| **Total**| **41**|                      |
 
 ---
 
@@ -1126,7 +1255,7 @@ for tool_call in response.choices[0].message.tool_calls:
 
 | Dependency | Version Constraint | Risk | Mitigation |
 |------------|-------------------|------|------------|
-| `apcore` (apcore-python) | >= 0.14.0 | API changes in pre-1.0 SDK | apcore API is declared stable; pin to compatible range; test against latest |
+| `apcore` (apcore-python) | >= 0.17.0 | API changes in pre-1.0 SDK | apcore API is declared stable; pin to compatible range; test against latest |
 | `mcp` (official MCP SDK) | >= 1.0.0 | SDK breaking changes; transport API changes | Pin to compatible range; the SDK is mature; transport API is stable |
 | `openai` (optional) | Not required | N/A -- `to_openai_tools()` produces plain dicts | No runtime dependency |
 | Python | >= 3.11 | Minimum version for modern type hints and `match` statements | Align with apcore-python's minimum Python version |
@@ -1312,9 +1441,9 @@ The following must all be true before the v0.1.0 release:
 | **OpenAI Function Calling / Tools** | OpenAI's mechanism for allowing language models to invoke external functions. Tools are defined with a name, description, and parameters (JSON Schema). |
 | **Structured Outputs (strict mode)** | An OpenAI feature where `"strict": true` on a tool definition constrains the model to produce outputs exactly matching the schema. |
 | **Registry** | An apcore class that discovers, registers, and provides query access to modules. Central to apcore's module management. |
-| **Executor** | An apcore class that orchestrates the module execution pipeline: context creation, safety checks, ACL, validation, middleware, execution, and result return. |
+| **Executor** | An apcore class that orchestrates the module execution pipeline via `PipelineEngine`: context creation, call-chain guard, module lookup, ACL, approval gate, middleware before, input validation, execution, output validation, middleware after, and result return (11 steps). |
 | **ModuleDescriptor** | An apcore dataclass containing a module's full metadata: `module_id`, `name`, `description`, `input_schema`, `output_schema`, `annotations`, `examples`, `tags`, `version`. |
-| **ModuleAnnotations** | An apcore dataclass with behavioral flags: `readonly`, `destructive`, `idempotent`, `requires_approval`, `open_world`. |
+| **ModuleAnnotations** | An apcore frozen dataclass with behavioral flags: `readonly`, `destructive`, `idempotent`, `requires_approval`, `open_world`, `streaming`, `cacheable`, `cache_ttl`, `cache_key_fields`, `paginated`, `pagination_style`, `extra`. |
 | **xxx-apcore** | Convention for apcore adapter projects targeting specific domains: `comfyui-apcore`, `vnpy-apcore`, `blender-apcore`, etc. |
 | **Transport** | The communication mechanism between MCP client and server. Supported: stdio (stdin/stdout), Streamable HTTP, SSE (Server-Sent Events). |
 | **stdio** | A transport where the MCP server reads from standard input and writes to standard output. Used by Claude Desktop for local server processes. |

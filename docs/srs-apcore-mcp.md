@@ -4,12 +4,12 @@
 |-------------|--------------------------------------------------------------------------|
 | Title       | apcore-mcp: Automatic MCP Server & OpenAI Tools Bridge                   |
 | Document    | Software Requirements Specification (SRS)                                |
-| Version     | 1.6                                                                      |
-| Date        | 2026-03-31                                                               |
+| Version     | 1.8                                                                      |
+| Date        | 2026-04-06                                                               |
 | Author      | aiperceivable Engineering Team                                             |
 | Status      | Draft                                                                    |
-| PRD Ref     | `docs/prd-apcore-mcp.md` v1.5                                           |
-| Tech Design | `docs/tech-design-apcore-mcp.md` v1.5                                   |
+| PRD Ref     | `docs/prd-apcore-mcp.md` v1.7                                           |
+| Tech Design | `docs/tech-design-apcore-mcp.md` v1.7                                   |
 | Standard    | IEEE 830 / ISO/IEC/IEEE 29148                                            |
 
 ---
@@ -25,6 +25,8 @@
 | 1.4     | 2026-03-02 | aiperceivable Engineering Team | Approval system (F-028), AI guidance fields, AI intent metadata, streaming annotations |
 | 1.5     | 2026-03-13 | aiperceivable Engineering Team | Sync update: async_serve(), ExecutionCancelledError, updated serve() signature, Python >= 3.11, apcore >= 0.13.0, new annotation fields |
 | 1.6     | 2026-03-31 | aiperceivable Engineering Team | apcore 0.15.0 upgrade: Config Bus namespace (F-033), Error Formatter Registry (F-034), dot-namespaced events (F-035), 6 new error codes, apcore >= 0.15.1 |
+| 1.7     | 2026-04-05 | aiperceivable Engineering Team | apcore 0.17.0 upgrade: Pipeline v2 delegation, 11-step pipeline (safety_check → call_chain_guard rename, middleware_before before input_validation), Step metadata, YAML pipeline config, PipelineContext fields, StepTrace.skip_reason, sensitive field redaction utility, apcore >= 0.17.0 |
+| 1.8     | 2026-04-06 | aiperceivable Engineering Team | apcore 0.17.0 feature integration: Pipeline Strategy (F-036), Trace Exposure (F-037), Output Redaction (F-038), Preflight Validation (F-039), YAML Pipeline Config (F-040), Annotation Metadata Passthrough (F-041), 4 new error mappings, 2 new NFRs |
 
 ---
 
@@ -78,7 +80,7 @@ apcore-mcp does NOT reimplement the MCP protocol (it uses the official `mcp` Pyt
 | **OpenAI Function Calling / Tools** | OpenAI's mechanism for allowing language models to invoke external functions, defined with name, description, and parameters (JSON Schema). |
 | **Strict Mode** | An OpenAI feature where `"strict": true` on a tool definition constrains the model to produce outputs exactly matching the schema. Requires `additionalProperties: false` and all properties marked required. |
 | **Registry** | An apcore class that discovers, registers, and provides query access to modules. |
-| **Executor** | An apcore class that orchestrates the module execution pipeline: context creation, safety checks, ACL, validation, middleware, execution, and result return. |
+| **Executor** | An apcore class that orchestrates the module execution pipeline via `PipelineEngine`: context creation, call-chain guard, module lookup, ACL, approval gate, middleware before, input validation, execution, output validation, middleware after, and result return (11 steps). |
 | **ModuleDescriptor** | An apcore dataclass containing a module's full metadata: `module_id`, `name`, `description`, `input_schema`, `output_schema`, `annotations`, `examples`, `tags`, `version`. |
 | **ModuleAnnotations** | An apcore frozen dataclass with behavioral flags: `readonly` (bool, default False), `destructive` (bool, default False), `idempotent` (bool, default False), `requires_approval` (bool, default False), `open_world` (bool, default True). |
 | **ModuleError** | Base exception class for all apcore framework errors. Contains `code`, `message`, `details`, `cause`, `trace_id`, and `timestamp` fields. |
@@ -177,7 +179,7 @@ apcore-mcp is the first adapter in a planned family (apcore-a2a is future). It d
 | A-03 | MCP clients (Claude Desktop, Cursor) correctly implement the MCP protocol for tool discovery and invocation | Assumption |
 | A-04 | apcore modules produce JSON-serializable output dicts from their `execute()` methods | Assumption |
 | A-05 | Python >= 3.11 is available in the target deployment environment | Assumption |
-| D-01 | `apcore` package >= 0.13.0 | Dependency |
+| D-01 | `apcore` package >= 0.17.0 | Dependency |
 | D-02 | `mcp` package >= 1.0.0 | Dependency |
 | D-03 | `openai` package (optional, not required at runtime) | Dependency |
 
@@ -591,16 +593,16 @@ apcore-mcp is the first adapter in a planned family (apcore-a2a is future). It d
 | **Priority** | P0 |
 | **Traces to** | F-003 |
 
-**Description:** Every MCP tool call routed through `ExecutionRouter.handle_call()` shall pass through the complete apcore Executor 10-step pipeline: (1) context creation, (2) safety checks (call depth, circular call, frequency), (3) module lookup, (4) ACL enforcement, (5) input validation, (6) middleware before hooks, (7) module execution, (8) output validation, (9) middleware after hooks, (10) result return. No step shall be bypassed.
+**Description:** Every MCP tool call routed through `ExecutionRouter.handle_call()` shall pass through the complete apcore Executor 11-step pipeline (delegated to `PipelineEngine.run()`): (1) context creation, (2) call-chain guard (depth, cycle, repeat checks), (3) module lookup, (4) ACL enforcement, (5) approval gate, (6) middleware before hooks, (7) input validation, (8) module execution, (9) output validation, (10) middleware after hooks, (11) result return. No step shall be bypassed.
 
 **Input/Trigger:** Any MCP `tools/call` request.
 
 **Expected Output:** The Executor pipeline executes in full. The final output (post-middleware) is returned.
 
 **Boundary Conditions:**
-- Module with no middleware: Steps 6 and 9 execute with zero middlewares (no-op).
-- Module with no ACL: Step 4 is skipped (Executor behavior when `acl=None`).
-- Module with no input_schema: Step 5 is skipped (Executor behavior).
+- Module with no middleware: Steps 6 and 10 execute with zero middlewares (no-op).
+- Module with no ACL: Step 4 (acl_check) is skipped (Executor behavior when `acl=None`).
+- Module with no input_schema: Step 7 (input_validation) is skipped (Executor behavior).
 
 **Error Conditions:** Any pipeline step may raise errors mapped per FR-ERROR-001 through FR-ERROR-009.
 
@@ -971,6 +973,91 @@ where each line corresponds to an error entry from `error.details["errors"]`. Ea
 **Input/Trigger:** `ExecutionCancelledError` raised during `Executor.call_async()` or `Executor.stream()`.
 
 **Expected Output:** `CallToolResult(content=[TextContent(type="text", text="Execution was cancelled")], isError=True)` with `_meta.retryable=True`.
+
+**Boundary Conditions:** None.
+
+**Error Conditions:** None.
+
+---
+
+#### FR-ERROR-013: Map ConfigEnvMapConflictError to MCP error
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-ERROR-013 |
+| **Title** | Map apcore ConfigEnvMapConflictError to MCP error |
+| **Priority** | P1 |
+| **Traces to** | F-004 |
+
+**Description:** When `ConfigEnvMapConflictError` is raised (two Config Bus namespaces claim the same env var), the `ErrorMapper` shall return a `CallToolResult` with `isError=True` and text `"Config env map conflict: {env_var}"`.
+
+**Input/Trigger:** `ConfigEnvMapConflictError(env_var="APCORE_MCP_PORT", owner="other_ns")`.
+
+**Expected Output:** `CallToolResult(content=[TextContent(type="text", text="Config env map conflict: APCORE_MCP_PORT")], isError=True)`.
+
+**Boundary Conditions:** None.
+
+**Error Conditions:** None.
+
+---
+
+#### FR-ERROR-014: Map PipelineAbortError to MCP error
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-ERROR-014 |
+| **Title** | Map apcore PipelineAbortError to MCP error |
+| **Priority** | P1 |
+| **Traces to** | F-004 |
+
+**Description:** When `PipelineAbortError` is raised (a pipeline step aborts execution), the `ErrorMapper` shall return a `CallToolResult` with `isError=True` and text `"Pipeline aborted at step: {step_name}"`. The step's `explanation` field, if present, is appended.
+
+**Input/Trigger:** `PipelineAbortError(step="acl_check", explanation="Access denied by rule #3")`.
+
+**Expected Output:** `CallToolResult(content=[TextContent(type="text", text="Pipeline aborted at step: acl_check — Access denied by rule #3")], isError=True)`.
+
+**Boundary Conditions:**
+- `explanation` is None → only step name included.
+
+**Error Conditions:** None.
+
+---
+
+#### FR-ERROR-015: Map StepNotFoundError to MCP error
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-ERROR-015 |
+| **Title** | Map apcore StepNotFoundError to MCP error |
+| **Priority** | P1 |
+| **Traces to** | F-004 |
+
+**Description:** When `StepNotFoundError` is raised (a referenced pipeline step does not exist), the `ErrorMapper` shall return a `CallToolResult` with `isError=True` and text `"Pipeline step not found: {message}"`.
+
+**Input/Trigger:** `StepNotFoundError("Step 'custom_auth' not found in strategy")`.
+
+**Expected Output:** `CallToolResult(content=[TextContent(type="text", text="Pipeline step not found: Step 'custom_auth' not found in strategy")], isError=True)`.
+
+**Boundary Conditions:** None.
+
+**Error Conditions:** None.
+
+---
+
+#### FR-ERROR-016: Map VersionIncompatibleError to MCP error
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-ERROR-016 |
+| **Title** | Map apcore VersionIncompatibleError to MCP error |
+| **Priority** | P1 |
+| **Traces to** | F-004 |
+
+**Description:** When `VersionIncompatibleError` is raised (module version negotiation fails), the `ErrorMapper` shall return a `CallToolResult` with `isError=True` and text `"Version incompatible: {message}"`.
+
+**Input/Trigger:** `VersionIncompatibleError("Requested v2.0 but module provides v1.x")`.
+
+**Expected Output:** `CallToolResult(content=[TextContent(type="text", text="Version incompatible: Requested v2.0 but module provides v1.x")], isError=True)`.
 
 **Boundary Conditions:** None.
 
@@ -2761,6 +2848,485 @@ Workflow Hints: ...
 
 ---
 
+### 3.19 FR-STRATEGY: Pipeline Strategy Requirements (F-036)
+
+---
+
+#### FR-STRATEGY-001: serve() accepts strategy parameter
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-STRATEGY-001 |
+| **Title** | serve() accepts pipeline strategy parameter |
+| **Priority** | P1 |
+| **Traces to** | F-036 |
+
+**Description:** `serve()` shall accept an optional `strategy: str | None` parameter. When a `Registry` is provided (not an `Executor`), the strategy name is passed to `Executor(registry, strategy=strategy)`. Valid values: `"standard"`, `"internal"`, `"testing"`, `"performance"`, `"minimal"`, `None` (defaults to `"standard"`).
+
+**Input/Trigger:** `serve(registry, strategy="testing")`.
+
+**Expected Output:** Executor created with the `"testing"` preset strategy (no ACL, approval, or call-chain guard steps).
+
+**Boundary Conditions:**
+- `strategy=None` → uses `"standard"` (full 11-step pipeline).
+- `serve(executor, strategy="testing")` → logs WARNING "strategy parameter ignored when Executor is provided"; uses the Executor's own strategy.
+- Invalid strategy name → raises `ValueError` with message listing valid choices.
+
+**Error Conditions:**
+- `ValueError` for invalid strategy names.
+
+---
+
+#### FR-STRATEGY-002: async_serve() accepts strategy parameter
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-STRATEGY-002 |
+| **Title** | async_serve() accepts pipeline strategy parameter |
+| **Priority** | P1 |
+| **Traces to** | F-036 |
+
+**Description:** `async_serve()` shall accept the same `strategy` parameter as `serve()` with identical behavior.
+
+**Input/Trigger:** `async with async_serve(registry, strategy="performance") as app: ...`
+
+**Expected Output:** Executor created with the `"performance"` preset strategy (no middleware steps).
+
+**Boundary Conditions:** Same as FR-STRATEGY-001.
+
+**Error Conditions:** Same as FR-STRATEGY-001.
+
+---
+
+#### FR-STRATEGY-003: CLI --strategy flag
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-STRATEGY-003 |
+| **Title** | CLI accepts --strategy flag for pipeline strategy selection |
+| **Priority** | P1 |
+| **Traces to** | F-036 |
+
+**Description:** The CLI shall accept `--strategy {standard,internal,testing,performance}`. The selected strategy is passed to `serve()`. Default: `standard`.
+
+**Input/Trigger:** `python -m apcore_mcp --extensions-dir ./modules --strategy testing`.
+
+**Expected Output:** Server starts with the testing strategy.
+
+**Boundary Conditions:**
+- Omitted → default `"standard"`.
+- Invalid value → argparse error with valid choices, exit code 2.
+
+**Error Conditions:** argparse validation error.
+
+---
+
+#### FR-STRATEGY-004: Config Bus mcp.pipeline.strategy
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-STRATEGY-004 |
+| **Title** | Config Bus mcp.pipeline.strategy for strategy selection |
+| **Priority** | P2 |
+| **Traces to** | F-036, F-033 |
+
+**Description:** When no `strategy` parameter is provided to `serve()` or CLI, the strategy shall be read from Config Bus key `mcp.pipeline.strategy`. Explicit parameter or CLI flag overrides Config Bus value.
+
+**Input/Trigger:** `apcore.yaml` with `mcp: { pipeline: { strategy: "internal" } }`.
+
+**Expected Output:** Executor created with `"internal"` strategy when no explicit parameter.
+
+**Boundary Conditions:**
+- Config Bus key missing → uses `"standard"`.
+- CLI `--strategy` overrides Config Bus value.
+
+**Error Conditions:** Invalid Config Bus value → `ValueError` at startup.
+
+---
+
+### 3.20 FR-TRACE: Pipeline Observability Requirements (F-037)
+
+---
+
+#### FR-TRACE-001: ExecutionRouter uses call_async_with_trace() when trace enabled
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-TRACE-001 |
+| **Title** | ExecutionRouter uses call_async_with_trace() in trace mode |
+| **Priority** | P2 |
+| **Traces to** | F-037 |
+
+**Description:** When `serve(trace=True)`, the `ExecutionRouter` shall call `Executor.call_async_with_trace(module_id, inputs)` instead of `call_async()`, capturing the returned `PipelineTrace` alongside the output dict.
+
+**Input/Trigger:** Tool call with trace mode enabled.
+
+**Expected Output:** Both output dict and `PipelineTrace` captured.
+
+**Boundary Conditions:**
+- `trace=False` (default) → uses `call_async()` with no trace overhead.
+
+**Error Conditions:** Same as standard `call_async()` error handling.
+
+---
+
+#### FR-TRACE-002: Trace data in CallToolResult _meta
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-TRACE-002 |
+| **Title** | PipelineTrace included in MCP response _meta.trace |
+| **Priority** | P2 |
+| **Traces to** | F-037 |
+
+**Description:** When trace mode is enabled, the `CallToolResult` shall include `_meta.trace` containing: `strategy_name` (str), `total_duration_ms` (float), and `steps` (list of `{name, duration_ms, skipped, skip_reason}`).
+
+**Input/Trigger:** Successful tool call with trace mode enabled.
+
+**Expected Output:**
+```json
+{
+  "_meta": {
+    "trace": {
+      "strategy_name": "standard",
+      "total_duration_ms": 42.5,
+      "steps": [
+        {"name": "context_creation", "duration_ms": 0.3, "skipped": false, "skip_reason": null},
+        {"name": "call_chain_guard", "duration_ms": 0.1, "skipped": false, "skip_reason": null}
+      ]
+    }
+  }
+}
+```
+
+**Boundary Conditions:**
+- Skipped steps include `skip_reason` (`"no_match"`, `"dry_run"`, `"error_ignored"`).
+- Trace data excludes input/output values (security).
+
+**Error Conditions:** None (trace is best-effort; errors in trace formatting do not affect tool result).
+
+---
+
+#### FR-TRACE-003: Trace data in Explorer execution response
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-TRACE-003 |
+| **Title** | Explorer execution response includes PipelineTrace |
+| **Priority** | P2 |
+| **Traces to** | F-037, F-026 |
+
+**Description:** When Explorer is enabled with `allow_execute=True` and trace mode is enabled, the `POST /explorer/tools/<name>/call` response JSON shall include a `trace` key with the `PipelineTrace` data.
+
+**Input/Trigger:** `POST /explorer/tools/image.resize/call` with trace mode enabled.
+
+**Expected Output:** JSON response with `result` and `trace` keys.
+
+**Boundary Conditions:**
+- Trace mode disabled → no `trace` key in response.
+
+**Error Conditions:** None.
+
+---
+
+#### FR-TRACE-004: Trace data sent to MetricsCollector
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-TRACE-004 |
+| **Title** | Per-step timing reported to MetricsCollector |
+| **Priority** | P2 |
+| **Traces to** | F-037, F-022 |
+
+**Description:** When `metrics_collector` is provided and trace mode is enabled, per-step `duration_ms` values from `PipelineTrace` shall be reported to the collector as metric events.
+
+**Input/Trigger:** Tool call with trace mode and metrics_collector both enabled.
+
+**Expected Output:** Metric events emitted per step: `apcore_mcp.pipeline.step.duration_ms{step="context_creation"} = 0.3`.
+
+**Boundary Conditions:**
+- `metrics_collector` is `None` → no-op.
+- Trace mode disabled → no metrics emitted (call_async discards trace).
+
+**Error Conditions:** MetricsCollector exceptions logged at WARNING; do not fail tool call.
+
+---
+
+### 3.21 FR-REDACT: Output Redaction Requirements (F-038)
+
+---
+
+#### FR-REDACT-001: ExecutionRouter applies redact_sensitive() before serialization
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-REDACT-001 |
+| **Title** | Sensitive output fields redacted before MCP serialization |
+| **Priority** | P1 |
+| **Traces to** | F-038 |
+
+**Description:** When `redact_output=True` (default), the `ExecutionRouter` shall call `redact_sensitive(output, output_schema)` on the module output dict before `json.dumps()` serialization. Fields marked with `x-sensitive: true` in the module's `output_schema` shall have their values replaced with `"***REDACTED***"`.
+
+**Input/Trigger:** Module output `{"token": "secret123", "status": "ok"}` with `output_schema.properties.token["x-sensitive"] = true`.
+
+**Expected Output:** MCP response text: `{"token": "***REDACTED***", "status": "ok"}`.
+
+**Boundary Conditions:**
+- Empty `output_schema` `{}` → no redaction performed (no schema to match).
+- Module with no `output_schema` → no redaction.
+- Nested objects → recursive schema traversal.
+
+**Error Conditions:** Redaction failure (malformed schema) → log WARNING, return unredacted output (fail-open for availability, log for audit).
+
+---
+
+#### FR-REDACT-002: _secret_ prefix keys redacted
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-REDACT-002 |
+| **Title** | Keys matching _secret_* prefix redacted regardless of schema |
+| **Priority** | P1 |
+| **Traces to** | F-038 |
+
+**Description:** Output dict keys matching the pattern `_secret_*` shall have their values replaced with `"***REDACTED***"` regardless of whether the `output_schema` marks them as sensitive.
+
+**Input/Trigger:** Output `{"_secret_api_key": "sk-abc123", "count": 5}`.
+
+**Expected Output:** `{"_secret_api_key": "***REDACTED***", "count": 5}`.
+
+**Boundary Conditions:**
+- Only top-level and nested keys matching `_secret_*` prefix are affected.
+- `redact_output=False` → no redaction of any kind.
+
+**Error Conditions:** None.
+
+---
+
+#### FR-REDACT-003: serve() and async_serve() accept redact_output parameter
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-REDACT-003 |
+| **Title** | serve() and async_serve() accept redact_output parameter |
+| **Priority** | P1 |
+| **Traces to** | F-038 |
+
+**Description:** Both `serve()` and `async_serve()` shall accept `redact_output: bool = True`. When `True`, output redaction is applied. When `False`, output is serialized as-is.
+
+**Input/Trigger:** `serve(registry, redact_output=False)`.
+
+**Expected Output:** No output redaction performed; sensitive fields pass through to MCP client.
+
+**Boundary Conditions:**
+- Default is `True` (secure by default).
+
+**Error Conditions:** None.
+
+---
+
+### 3.22 FR-PREFLIGHT: Preflight Validation Requirements (F-039)
+
+---
+
+#### FR-PREFLIGHT-001: ExecutionRouter.validate_tool() method
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-PREFLIGHT-001 |
+| **Title** | ExecutionRouter provides validate_tool() for dry-run validation |
+| **Priority** | P2 |
+| **Traces to** | F-039 |
+
+**Description:** `ExecutionRouter` shall provide `validate_tool(tool_name: str, arguments: dict) -> PreflightResult` which calls `Executor.validate(module_id, inputs)`. Returns `PreflightResult` with per-check pass/fail for: module_id, call_chain, acl, schema.
+
+**Input/Trigger:** `router.validate_tool("image.resize", {"width": 800})`.
+
+**Expected Output:** `PreflightResult(valid=True, checks=[...], requires_approval=False)`.
+
+**Boundary Conditions:**
+- Non-existent module → `PreflightResult(valid=False, checks=[PreflightCheckResult(check="module_lookup", passed=False, ...)])`.
+- Invalid inputs → `PreflightResult(valid=False, checks=[..., PreflightCheckResult(check="schema", passed=False, error={...})])`.
+
+**Error Conditions:** Unexpected exceptions → caught and returned as failed check.
+
+---
+
+#### FR-PREFLIGHT-002: Explorer validate endpoint
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-PREFLIGHT-002 |
+| **Title** | Explorer POST /validate endpoint for dry-run validation |
+| **Priority** | P2 |
+| **Traces to** | F-039, F-026 |
+
+**Description:** When Explorer is enabled, `POST /explorer/tools/<name>/validate` shall accept a JSON body with tool arguments, call `validate_tool()`, and return `PreflightResult` as JSON.
+
+**Input/Trigger:** `POST /explorer/tools/image.resize/validate` with body `{"width": "not_a_number"}`.
+
+**Expected Output:** HTTP 200 with JSON `{"valid": false, "checks": [...], "requires_approval": false}`.
+
+**Boundary Conditions:**
+- Available when `explorer=True` regardless of `allow_execute` setting (validation is read-only).
+- Explorer disabled → 404.
+
+**Error Conditions:** None.
+
+---
+
+#### FR-PREFLIGHT-003: Validation executes only pure steps
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-PREFLIGHT-003 |
+| **Title** | Preflight validation executes no side-effect steps |
+| **Priority** | P2 |
+| **Traces to** | F-039 |
+
+**Description:** `Executor.validate()` uses `dry_run=True` which skips all `pure=False` steps (approval_gate, middleware_before, execute, middleware_after). Only pure steps execute: context_creation, call_chain_guard, module_lookup, acl_check, input_validation, output_validation, return_result.
+
+**Input/Trigger:** `validate_tool()` on a module with side effects in its `execute()`.
+
+**Expected Output:** No module execution occurs; only schema and ACL checks are performed.
+
+**Boundary Conditions:** None.
+
+**Error Conditions:** None.
+
+---
+
+### 3.23 FR-YAMLPIPE: YAML Pipeline Configuration Requirements (F-040)
+
+---
+
+#### FR-YAMLPIPE-001: Config Bus mcp.pipeline section parsed at startup
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-YAMLPIPE-001 |
+| **Title** | mcp.pipeline Config Bus section configures pipeline strategy |
+| **Priority** | P2 |
+| **Traces to** | F-040, F-033 |
+
+**Description:** At startup, apcore-mcp shall check for a `mcp.pipeline` section in the Config Bus. When present, it shall call `build_strategy_from_config(pipeline_config, registry=..., config=..., acl=..., ...)` to build a custom `ExecutionStrategy`. This strategy is used for all tool calls.
+
+**Input/Trigger:** `apcore.yaml`:
+```yaml
+mcp:
+  pipeline:
+    remove: ["acl_check"]
+    configure:
+      input_validation:
+        timeout_ms: 5000
+```
+
+**Expected Output:** Pipeline strategy with ACL step removed and input_validation timeout set to 5000ms.
+
+**Boundary Conditions:**
+- `mcp.pipeline` absent → default strategy used.
+- When both `strategy` parameter and `mcp.pipeline` are present, YAML pipeline config takes precedence (WARNING logged).
+
+**Error Conditions:** Invalid pipeline config → `ValueError` at startup with descriptive message.
+
+---
+
+#### FR-YAMLPIPE-002: Pipeline step removal via YAML
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-YAMLPIPE-002 |
+| **Title** | YAML pipeline config supports step removal |
+| **Priority** | P2 |
+| **Traces to** | F-040 |
+
+**Description:** The `remove` key in `mcp.pipeline` shall accept a list of step names to remove from the pipeline. Only removable steps can be removed (`removable=True`); attempting to remove a non-removable step (e.g., `context_creation`, `execute`) raises `StepNotRemovableError`.
+
+**Input/Trigger:** `mcp.pipeline.remove: ["acl_check", "approval_gate"]`.
+
+**Expected Output:** Pipeline without ACL check and approval gate steps.
+
+**Boundary Conditions:**
+- Empty `remove` list → no steps removed.
+- Non-existent step name → `StepNotFoundError`.
+
+**Error Conditions:** `StepNotRemovableError`, `StepNotFoundError`.
+
+---
+
+#### FR-YAMLPIPE-003: Pipeline step configuration override via YAML
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-YAMLPIPE-003 |
+| **Title** | YAML pipeline config supports step field overrides |
+| **Priority** | P2 |
+| **Traces to** | F-040 |
+
+**Description:** The `configure` key in `mcp.pipeline` shall accept a dict of step names to configuration overrides. Supported override fields: `timeout_ms`, `ignore_errors`, `match_modules`.
+
+**Input/Trigger:** `mcp.pipeline.configure: { execute: { timeout_ms: 10000 } }`.
+
+**Expected Output:** Execute step timeout overridden to 10000ms.
+
+**Boundary Conditions:**
+- Unknown step name → `StepNotFoundError`.
+- Unknown config field → ignored with WARNING log.
+
+**Error Conditions:** `StepNotFoundError`.
+
+---
+
+### 3.24 FR-EXTRAANNOT: Annotation Metadata Passthrough Requirements (F-041)
+
+---
+
+#### FR-EXTRAANNOT-001: AnnotationMapper reads mcp_ prefixed keys from extra
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-EXTRAANNOT-001 |
+| **Title** | mcp_ prefixed keys from annotations.extra flow to tool description |
+| **Priority** | P2 |
+| **Traces to** | F-041 |
+
+**Description:** The `AnnotationMapper` shall read `ModuleAnnotations.extra` keys prefixed with `mcp_`, strip the prefix, and append them to the tool description suffix as labeled lines (e.g., `\ncategory: image`).
+
+**Input/Trigger:** `annotations = ModuleAnnotations(extra={"mcp_category": "image", "mcp_cost": "high", "internal_flag": "x"})`.
+
+**Expected Output:** Description suffix includes `\ncategory: image\ncost: high`. The key `internal_flag` is ignored (no `mcp_` prefix).
+
+**Boundary Conditions:**
+- Empty `extra` or no `mcp_` keys → no change to description.
+- Non-string values → silently ignored.
+- `annotations` is `None` → no change.
+
+**Error Conditions:** None.
+
+---
+
+#### FR-EXTRAANNOT-002: Explorer displays extra annotation metadata
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-EXTRAANNOT-002 |
+| **Title** | Explorer tool detail view shows mcp_ extra metadata |
+| **Priority** | P2 |
+| **Traces to** | F-041, F-026 |
+
+**Description:** The MCP Tool Explorer detail view for a tool shall display any `mcp_` extra annotation metadata as labeled fields.
+
+**Input/Trigger:** Tool with `annotations.extra = {"mcp_category": "image"}`.
+
+**Expected Output:** Explorer detail shows `category: image` in the annotations section.
+
+**Boundary Conditions:**
+- No `mcp_` keys → annotations section shows standard fields only.
+
+**Error Conditions:** None.
+
+---
+
 ## 4. Specific Requirements -- Non-Functional Requirements
 
 ### 4.1 NFR-PERF: Performance Requirements
@@ -2823,6 +3389,20 @@ Workflow Hints: ...
 
 ---
 
+#### NFR-PERF-005: Trace mode overhead
+
+| Field | Value |
+|-------|-------|
+| **ID** | NFR-PERF-005 |
+| **Title** | Trace mode adds less than 2ms overhead per tool call |
+| **Target** | < 2ms additional latency when trace=True vs trace=False |
+| **Measurement** | Benchmark: compare `call_async_with_trace()` vs `call_async()` latency with a no-op module |
+| **Traces to** | F-037 |
+
+**Description:** The overhead of capturing `PipelineTrace` (trace mode enabled) versus discarding it (trace mode disabled) shall be less than 2ms per tool call. This ensures trace mode is viable for development use without significant performance impact.
+
+---
+
 ### 4.2 NFR-SEC: Security Requirements
 
 ---
@@ -2866,6 +3446,20 @@ Workflow Hints: ...
 | **Traces to** | F-001 |
 
 **Description:** MCP Tool `inputSchema` and OpenAI `parameters` shall faithfully reproduce the JSON Schema from apcore modules. The `x-sensitive` extension on individual fields is metadata for server-side redaction; it may appear in schemas (as it describes the field's nature) but the actual sensitive data values shall never appear in error messages or logs.
+
+---
+
+#### NFR-SEC-004: Output redaction coverage
+
+| Field | Value |
+|-------|-------|
+| **ID** | NFR-SEC-004 |
+| **Title** | 100% of x-sensitive output fields redacted when redact_output=True |
+| **Target** | Zero sensitive field values pass through to MCP clients when redaction enabled |
+| **Measurement** | Security test: create modules with x-sensitive output fields and _secret_ prefix keys; verify all are redacted in MCP responses |
+| **Traces to** | F-038 |
+
+**Description:** When `redact_output=True` (default), every output field marked with `x-sensitive: true` in the module's `output_schema` and every key matching the `_secret_*` prefix shall have its value replaced with `"***REDACTED***"` before transmission to the MCP client. No sensitive field value shall ever appear in MCP responses, logs, or error messages.
 
 ---
 
@@ -2998,12 +3592,12 @@ Workflow Hints: ...
 | Field | Value |
 |-------|-------|
 | **ID** | NFR-COMPAT-002 |
-| **Title** | Compatible with apcore-python >= 0.15.0 |
-| **Target** | apcore >= 0.15.1, < 1.0 |
+| **Title** | Compatible with apcore-python >= 0.17.0 |
+| **Target** | apcore >= 0.17.0, < 1.0 |
 | **Measurement** | Integration tests against latest apcore-python release |
 | **Traces to** | PRD Section 8.3 |
 
-**Description:** apcore-mcp shall declare a dependency on `apcore>=0.15.0,<1.0` and shall be tested against the latest release within that range. Version 0.15.0 is required for Config Bus namespace registration (§9.4), Error Formatter Registry (§8.8), and dot-namespaced event types (§9.16).
+**Description:** apcore-mcp shall declare a dependency on `apcore>=0.17.0,<1.0` and shall be tested against the latest release within that range. Version 0.17.0 is required for Pipeline v2 delegation (`PipelineEngine.run()`), call-chain guard rename (`safety_check` → `call_chain_guard`), corrected step order (middleware before input validation), Step metadata fields, YAML pipeline configuration, and sensitive field redaction utility. Prior features: Config Bus namespace registration (§9.4), Error Formatter Registry (§8.8), dot-namespaced event types (§9.16), Context `ContextKey[T]`, ACL condition handlers, and `Annotations.extra`.
 
 ---
 
@@ -3163,7 +3757,7 @@ Workflow Hints: ...
 2. Server invokes `call_tool` handler.
 3. Handler delegates to `ExecutionRouter.handle_call("image.resize", {"width": 800, "height": 600})`.
 4. Router calls `Executor.call_async("image.resize", {"width": 800, "height": 600})`.
-5. Executor executes the full 10-step pipeline (context, safety, lookup, ACL, validation, middleware before, execute, output validation, middleware after, return).
+5. Executor delegates to `PipelineEngine.run()` which executes the full 11-step pipeline (context, call-chain guard, lookup, ACL, approval gate, middleware before, input validation, execute, output validation, middleware after, return).
 6. Module returns `{"status": "ok", "path": "/out/resized.png"}`.
 7. Router serializes output to JSON: `'{"status":"ok","path":"/out/resized.png"}'`.
 8. Router returns `CallToolResult(content=[TextContent(type="text", text=<json>)], isError=False)`.
@@ -3197,7 +3791,7 @@ Workflow Hints: ...
 **Main Success Scenario (SchemaValidationError):**
 1. Client sends `tools/call` with `name="image.resize"` and `arguments={"width": "not_a_number"}`.
 2. Router calls `Executor.call_async()`.
-3. Executor raises `SchemaValidationError` at pipeline step 5.
+3. Executor raises `SchemaValidationError` at pipeline step 7 (input_validation).
 4. Router catches the error, delegates to `ErrorMapper.to_mcp_error()`.
 5. ErrorMapper formats field-level errors: "Input validation failed:\n- width: Input should be a valid integer (int_type)".
 6. Router returns `CallToolResult(isError=True, content=[TextContent(text=<error_message>)])`.

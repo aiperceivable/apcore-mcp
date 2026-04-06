@@ -3,12 +3,12 @@
 | Field       | Value                                                        |
 |-------------|--------------------------------------------------------------|
 | Title       | apcore-mcp Test Plan & Test Cases                            |
-| Version     | 1.4                                                          |
-| Date        | 2026-03-02                                                   |
+| Version     | 1.6                                                          |
+| Date        | 2026-04-06                                                   |
 | Author      | aiperceivable QA Team                                          |
 | Status      | Draft                                                        |
-| PRD Ref     | `docs/prd-apcore-mcp.md` v1.3                               |
-| Tech Design | `docs/tech-design-apcore-mcp.md` v1.3                       |
+| PRD Ref     | `docs/prd-apcore-mcp.md` v1.7                               |
+| Tech Design | `docs/tech-design-apcore-mcp.md` v1.7                       |
 | License     | Apache 2.0                                                   |
 
 ---
@@ -117,7 +117,7 @@ Shared fixtures defined in `tests/conftest.py`:
 
 | Package        | Version Constraint   |
 |----------------|---------------------|
-| apcore         | >= 0.2.0, < 1.0     |
+| apcore         | >= 0.17.0, < 1.0    |
 | mcp            | >= 1.0.0, < 2.0     |
 | pytest         | >= 7.0              |
 | pytest-asyncio | >= 0.21             |
@@ -166,7 +166,7 @@ show_missing = true
 | F-001       | Registry-to-MCP Schema Mapping     | P0       | TC-SCHEMA-001 to TC-SCHEMA-012, TC-INT-001                      |
 | F-002       | Annotation-to-MCP Mapping          | P0       | TC-ANNOT-001 to TC-ANNOT-010, TC-INT-001                        |
 | F-003       | MCP Execution Routing              | P0       | TC-EXEC-001 to TC-EXEC-012, TC-INT-001, TC-INT-003              |
-| F-004       | MCP Error Mapping                  | P0       | TC-ERROR-001 to TC-ERROR-011, TC-INT-003                        |
+| F-004       | MCP Error Mapping                  | P0       | TC-ERROR-001 to TC-ERROR-015, TC-INT-003                        |
 | F-005       | serve() Function                   | P0       | TC-SERVER-001 to TC-SERVER-010, TC-INT-001, TC-E2E-001          |
 | F-006       | stdio Transport                    | P0       | TC-TRANSPORT-001 to TC-TRANSPORT-003, TC-INT-002, TC-E2E-001   |
 | F-007       | Streamable HTTP Transport          | P0       | TC-TRANSPORT-004 to TC-TRANSPORT-006, TC-INT-002, TC-E2E-002   |
@@ -185,6 +185,12 @@ show_missing = true
 | F-020       | MCP Resource Exposure              | P2       | TC-E2E-005                                                       |
 | F-026       | MCP Tool Explorer                  | P2       | TC-EXPLORER-001 through TC-EXPLORER-008                          |
 | F-027       | JWT Authentication                 | P2       | TC-AUTH-001 through TC-AUTH-022, TC-AUTH-MW-001 through TC-AUTH-MW-012, TC-AUTH-INT-001 through TC-AUTH-INT-013 |
+| F-036       | Pipeline Strategy Selection        | P1       | TC-STRATEGY-001 through TC-STRATEGY-007                          |
+| F-037       | Pipeline Observability             | P2       | TC-TRACE-001 through TC-TRACE-005                                |
+| F-038       | Tool Output Redaction              | P1       | TC-REDACT-001 through TC-REDACT-006                              |
+| F-039       | Tool Preflight Validation          | P2       | TC-PREFLIGHT-001 through TC-PREFLIGHT-005                        |
+| F-040       | YAML Pipeline Configuration        | P2       | TC-YAMLPIPE-001 through TC-YAMLPIPE-004                          |
+| F-041       | Annotation Metadata Passthrough    | P2       | TC-EXTRAANNOT-001 through TC-EXTRAANNOT-004                      |
 
 ---
 
@@ -1166,6 +1172,62 @@ show_missing = true
 
 ---
 
+#### TC-ERROR-012: Map ConfigEnvMapConflictError to MCP error
+
+- **Priority:** P1
+- **Type:** Unit
+- **Test Data:** `error = ConfigEnvMapConflictError(env_var="APCORE_MCP_PORT", owner="other_ns")`
+- **Steps:**
+  1. Call `mapper.to_mcp_error(error)`.
+  2. Assert text contains `"Config env map conflict: APCORE_MCP_PORT"`.
+  3. Assert `isError=True`.
+- **Expected Result:** Error message includes env_var name.
+- **Traceability:** F-004 (AC6)
+
+---
+
+#### TC-ERROR-013: Map PipelineAbortError to MCP error
+
+- **Priority:** P1
+- **Type:** Unit
+- **Test Data:** `error = PipelineAbortError(step="acl_check", explanation="Access denied")`
+- **Steps:**
+  1. Call `mapper.to_mcp_error(error)`.
+  2. Assert text contains `"Pipeline aborted at step: acl_check"`.
+  3. Assert `isError=True`.
+- **Expected Result:** Error message includes step name and explanation.
+- **Traceability:** F-004 (AC6)
+
+---
+
+#### TC-ERROR-014: Map StepNotFoundError to MCP error
+
+- **Priority:** P1
+- **Type:** Unit
+- **Test Data:** `error = StepNotFoundError("Step 'custom_auth' not found")`
+- **Steps:**
+  1. Call `mapper.to_mcp_error(error)`.
+  2. Assert text contains `"Pipeline step not found"`.
+  3. Assert `isError=True`.
+- **Expected Result:** Error message includes step description.
+- **Traceability:** F-004 (AC6)
+
+---
+
+#### TC-ERROR-015: Map VersionIncompatibleError to MCP error
+
+- **Priority:** P1
+- **Type:** Unit
+- **Test Data:** `error = VersionIncompatibleError("Requested v2.0 but module provides v1.x")`
+- **Steps:**
+  1. Call `mapper.to_mcp_error(error)`.
+  2. Assert text contains `"Version incompatible"`.
+  3. Assert `isError=True`.
+- **Expected Result:** Error message includes version details.
+- **Traceability:** F-004 (AC6)
+
+---
+
 ### 5.5 MCP Server Factory (TC-SERVER-xxx)
 
 **Test File:** `tests/unit/server/test_factory.py`
@@ -2006,6 +2068,462 @@ show_missing = true
   5. Assert tools dict is in a consistent state (no partial entries).
 - **Expected Result:** No race conditions, no exceptions. Tools dict is consistent.
 - **Traceability:** F-015 (AC4)
+
+---
+
+### 5.10 Pipeline Strategy (TC-STRATEGY-xxx)
+
+**Test File:** `tests/unit/server/test_strategy.py`
+
+---
+
+#### TC-STRATEGY-001: serve() with strategy="standard" creates default Executor
+
+- **Priority:** P1
+- **Type:** Unit
+- **Test Data:** `serve(mock_registry, strategy="standard")`
+- **Steps:**
+  1. Call `serve()` with `strategy="standard"`.
+  2. Verify Executor created with `"standard"` strategy.
+- **Expected Result:** Executor uses standard 11-step pipeline.
+- **Traceability:** F-036 (AC4)
+
+---
+
+#### TC-STRATEGY-002: serve() with strategy="testing" creates testing Executor
+
+- **Priority:** P1
+- **Type:** Unit
+- **Test Data:** `serve(mock_registry, strategy="testing")`
+- **Steps:**
+  1. Call `serve()` with `strategy="testing"`.
+  2. Verify Executor created with testing strategy (no ACL/approval/call-chain).
+- **Expected Result:** Executor uses testing strategy.
+- **Traceability:** F-036 (AC1)
+
+---
+
+#### TC-STRATEGY-003: serve() with strategy="performance" creates performance Executor
+
+- **Priority:** P1
+- **Type:** Unit
+- **Test Data:** `serve(mock_registry, strategy="performance")`
+- **Steps:**
+  1. Call `serve()` with `strategy="performance"`.
+  2. Verify Executor created with performance strategy (no middleware).
+- **Expected Result:** Executor uses performance strategy.
+- **Traceability:** F-036 (AC2)
+
+---
+
+#### TC-STRATEGY-004: serve() with invalid strategy raises ValueError
+
+- **Priority:** P1
+- **Type:** Unit
+- **Test Data:** `serve(mock_registry, strategy="nonexistent")`
+- **Steps:**
+  1. Call `serve()` with invalid strategy name.
+  2. Assert `ValueError` raised with valid choices listed.
+- **Expected Result:** `ValueError` with message listing "standard", "internal", "testing", "performance", "minimal".
+- **Traceability:** F-036 (AC8)
+
+---
+
+#### TC-STRATEGY-005: serve(executor, strategy=...) logs WARNING and ignores
+
+- **Priority:** P1
+- **Type:** Unit
+- **Test Data:** `serve(mock_executor, strategy="testing")`
+- **Steps:**
+  1. Call `serve()` with pre-configured Executor and strategy parameter.
+  2. Assert WARNING logged.
+  3. Assert Executor's own strategy used (not overridden).
+- **Expected Result:** WARNING "strategy parameter ignored when Executor is provided".
+- **Traceability:** F-036 (AC5)
+
+---
+
+#### TC-STRATEGY-006: CLI --strategy flag selects strategy
+
+- **Priority:** P1
+- **Type:** Unit
+- **Test Data:** `["--extensions-dir", ".", "--strategy", "testing"]`
+- **Steps:**
+  1. Parse CLI args with `--strategy testing`.
+  2. Verify parsed strategy is "testing".
+- **Expected Result:** Strategy parsed correctly.
+- **Traceability:** F-036 (AC6)
+
+---
+
+#### TC-STRATEGY-007: Config Bus mcp.pipeline.strategy read at startup
+
+- **Priority:** P2
+- **Type:** Integration
+- **Test Data:** Config with `mcp.pipeline.strategy: "internal"`
+- **Steps:**
+  1. Register mcp namespace with pipeline.strategy: "internal".
+  2. Call `resolve_strategy(strategy=None, config=config)`.
+  3. Assert returns "internal".
+- **Expected Result:** Strategy resolved from Config Bus.
+- **Traceability:** F-036 (AC7)
+
+---
+
+### 5.11 Pipeline Trace (TC-TRACE-xxx)
+
+**Test File:** `tests/unit/server/test_trace.py`
+
+---
+
+#### TC-TRACE-001: trace=False uses call_async (no trace overhead)
+
+- **Priority:** P2
+- **Type:** Unit
+- **Test Data:** Router with `trace=False`, mock Executor
+- **Steps:**
+  1. Create ExecutionRouter with `trace=False`.
+  2. Call `handle_call()`.
+  3. Assert `executor.call_async()` called (not `call_async_with_trace()`).
+- **Expected Result:** `call_async()` invoked.
+- **Traceability:** F-037 (AC5)
+
+---
+
+#### TC-TRACE-002: trace=True uses call_async_with_trace and returns _meta.trace
+
+- **Priority:** P2
+- **Type:** Unit
+- **Test Data:** Router with `trace=True`, mock Executor returning `(output, PipelineTrace)`
+- **Steps:**
+  1. Create ExecutionRouter with `trace=True`.
+  2. Call `handle_call()`.
+  3. Assert `executor.call_async_with_trace()` called.
+  4. Assert response text includes `_meta.trace` data.
+- **Expected Result:** `_meta.trace` present with strategy_name and steps.
+- **Traceability:** F-037 (AC1, AC2)
+
+---
+
+#### TC-TRACE-003: Trace contains strategy_name and per-step timing
+
+- **Priority:** P2
+- **Type:** Unit
+- **Test Data:** PipelineTrace with 11 steps, strategy_name="standard"
+- **Steps:**
+  1. Convert PipelineTrace to _meta dict via `trace_to_meta()`.
+  2. Assert `strategy_name`, `total_duration_ms`, and `steps` list present.
+  3. Assert each step has `name`, `duration_ms`, `skipped`, `skip_reason`.
+- **Expected Result:** All fields present and correctly typed.
+- **Traceability:** F-037 (AC2)
+
+---
+
+#### TC-TRACE-004: Trace excludes input/output values (security)
+
+- **Priority:** P2
+- **Type:** Security
+- **Test Data:** PipelineTrace from execution with sensitive inputs
+- **Steps:**
+  1. Convert PipelineTrace to _meta dict.
+  2. Assert no `inputs`, `output`, `validated_inputs`, `validated_output` keys.
+- **Expected Result:** Only step metadata and timing; no data leakage.
+- **Traceability:** F-037 (AC6)
+
+---
+
+#### TC-TRACE-005: Trace data sent to metrics_collector
+
+- **Priority:** P2
+- **Type:** Unit
+- **Test Data:** PipelineTrace, mock MetricsCollector
+- **Steps:**
+  1. Call `trace_to_metrics(trace, collector)`.
+  2. Assert collector received per-step duration events.
+- **Expected Result:** Metric events emitted for each step.
+- **Traceability:** F-037 (AC4)
+
+---
+
+### 5.12 Output Redaction (TC-REDACT-xxx)
+
+**Test File:** `tests/unit/server/test_redactor.py`
+
+---
+
+#### TC-REDACT-001: x-sensitive field in output_schema replaced with REDACTED
+
+- **Priority:** P1
+- **Type:** Unit
+- **Test Data:** Output `{"token": "secret", "status": "ok"}`, schema with `token.x-sensitive: true`
+- **Steps:**
+  1. Call `redact_tool_output(output, schema)`.
+  2. Assert `token` value is `"***REDACTED***"`.
+  3. Assert `status` value unchanged.
+- **Expected Result:** `{"token": "***REDACTED***", "status": "ok"}`.
+- **Traceability:** F-038 (AC2)
+
+---
+
+#### TC-REDACT-002: _secret_ prefixed keys redacted
+
+- **Priority:** P1
+- **Type:** Unit
+- **Test Data:** Output `{"_secret_key": "abc123", "count": 5}`
+- **Steps:**
+  1. Call `redact_tool_output(output, {})`.
+  2. Assert `_secret_key` value is `"***REDACTED***"`.
+  3. Assert `count` unchanged.
+- **Expected Result:** `{"_secret_key": "***REDACTED***", "count": 5}`.
+- **Traceability:** F-038 (AC3)
+
+---
+
+#### TC-REDACT-003: Nested sensitive fields redacted
+
+- **Priority:** P1
+- **Type:** Unit
+- **Test Data:** Output `{"auth": {"token": "secret"}}`, schema with nested `auth.properties.token.x-sensitive: true`
+- **Steps:**
+  1. Call `redact_tool_output(output, schema)`.
+  2. Assert `auth.token` is `"***REDACTED***"`.
+- **Expected Result:** Nested field redacted.
+- **Traceability:** F-038 (AC4)
+
+---
+
+#### TC-REDACT-004: redact_output=False disables redaction
+
+- **Priority:** P1
+- **Type:** Unit
+- **Test Data:** Router with `redact_output=False`, output with sensitive fields
+- **Steps:**
+  1. Create ExecutionRouter with `redact_output=False`.
+  2. Call `handle_call()`.
+  3. Assert output contains original sensitive values.
+- **Expected Result:** No redaction applied.
+- **Traceability:** F-038 (AC5)
+
+---
+
+#### TC-REDACT-005: Empty output_schema skips redaction
+
+- **Priority:** P1
+- **Type:** Unit
+- **Test Data:** Output `{"token": "secret"}`, schema `{}`
+- **Steps:**
+  1. Call `redact_tool_output(output, {})`.
+  2. Assert `token` value unchanged (no schema to match, but _secret_ prefix still works).
+- **Expected Result:** Schema-based redaction skipped; prefix redaction still active.
+- **Traceability:** F-038 (AC6)
+
+---
+
+#### TC-REDACT-006: Original output dict not modified (copy semantics)
+
+- **Priority:** P1
+- **Type:** Unit
+- **Test Data:** Output dict with sensitive field
+- **Steps:**
+  1. Store reference to original output dict.
+  2. Call `redact_tool_output(output, schema)`.
+  3. Assert original dict unchanged.
+- **Expected Result:** Redaction operates on copy; original preserved.
+- **Traceability:** F-038 (AC7)
+
+---
+
+### 5.13 Preflight Validation (TC-PREFLIGHT-xxx)
+
+**Test File:** `tests/unit/server/test_preflight.py`
+
+---
+
+#### TC-PREFLIGHT-001: validate_tool() returns PreflightResult with all checks passed
+
+- **Priority:** P2
+- **Type:** Unit
+- **Test Data:** Valid module_id, valid arguments
+- **Steps:**
+  1. Call `router.validate_tool("image.resize", {"width": 800})`.
+  2. Assert `result.valid == True`.
+  3. Assert all checks in `result.checks` have `passed == True`.
+- **Expected Result:** `PreflightResult(valid=True, checks=[...all passed...])`.
+- **Traceability:** F-039 (AC1, AC2)
+
+---
+
+#### TC-PREFLIGHT-002: validate_tool() with non-existent module returns failed check
+
+- **Priority:** P2
+- **Type:** Unit
+- **Test Data:** Non-existent module_id
+- **Steps:**
+  1. Call `router.validate_tool("nonexistent.module", {})`.
+  2. Assert `result.valid == False`.
+  3. Assert module_lookup check failed.
+- **Expected Result:** `PreflightResult(valid=False, checks=[..., {check: "module_lookup", passed: false}])`.
+- **Traceability:** F-039 (AC6)
+
+---
+
+#### TC-PREFLIGHT-003: validate_tool() with invalid schema returns failed schema check
+
+- **Priority:** P2
+- **Type:** Unit
+- **Test Data:** Valid module, invalid arguments `{"width": "not_a_number"}`
+- **Steps:**
+  1. Call `router.validate_tool("image.resize", {"width": "not_a_number"})`.
+  2. Assert `result.valid == False`.
+  3. Assert schema check failed with field-level details.
+- **Expected Result:** Schema check failed with error details.
+- **Traceability:** F-039 (AC2)
+
+---
+
+#### TC-PREFLIGHT-004: validate_tool() does not execute module (no side effects)
+
+- **Priority:** P2
+- **Type:** Unit
+- **Test Data:** Module with side-effect tracking in execute()
+- **Steps:**
+  1. Call `router.validate_tool()`.
+  2. Assert module's `execute()` was NOT called.
+- **Expected Result:** No side effects; module.execute() not invoked.
+- **Traceability:** F-039 (AC3)
+
+---
+
+#### TC-PREFLIGHT-005: Explorer POST /validate endpoint returns PreflightResult JSON
+
+- **Priority:** P2
+- **Type:** Integration
+- **Test Data:** HTTP POST to `/explorer/tools/image.resize/validate` with JSON body
+- **Steps:**
+  1. Send POST request with valid arguments.
+  2. Assert HTTP 200.
+  3. Assert response JSON has `valid`, `checks`, `requires_approval` keys.
+- **Expected Result:** JSON PreflightResult.
+- **Traceability:** F-039 (AC1)
+
+---
+
+### 5.14 YAML Pipeline Configuration (TC-YAMLPIPE-xxx)
+
+**Test File:** `tests/unit/server/test_pipeline_config.py`
+
+---
+
+#### TC-YAMLPIPE-001: mcp.pipeline.remove removes named steps
+
+- **Priority:** P2
+- **Type:** Unit
+- **Test Data:** Config with `mcp.pipeline.remove: ["acl_check"]`
+- **Steps:**
+  1. Load pipeline config from Config Bus.
+  2. Assert resulting strategy does not contain `acl_check` step.
+- **Expected Result:** ACL step removed.
+- **Traceability:** F-040 (AC2)
+
+---
+
+#### TC-YAMLPIPE-002: mcp.pipeline.configure overrides step settings
+
+- **Priority:** P2
+- **Type:** Unit
+- **Test Data:** Config with `mcp.pipeline.configure: { input_validation: { timeout_ms: 5000 } }`
+- **Steps:**
+  1. Load pipeline config.
+  2. Assert input_validation step has timeout_ms=5000.
+- **Expected Result:** Step configuration overridden.
+- **Traceability:** F-040 (AC3)
+
+---
+
+#### TC-YAMLPIPE-003: Missing mcp.pipeline section uses default strategy
+
+- **Priority:** P2
+- **Type:** Unit
+- **Test Data:** Config without mcp.pipeline section
+- **Steps:**
+  1. Call `load_pipeline_config(config, ...)`.
+  2. Assert returns `None`.
+- **Expected Result:** None returned; caller uses default strategy.
+- **Traceability:** F-040 (AC7)
+
+---
+
+#### TC-YAMLPIPE-004: Invalid pipeline config raises ValueError at startup
+
+- **Priority:** P2
+- **Type:** Unit
+- **Test Data:** Config with `mcp.pipeline.remove: ["context_creation"]` (non-removable step)
+- **Steps:**
+  1. Attempt to load pipeline config.
+  2. Assert `StepNotRemovableError` raised.
+- **Expected Result:** Error at startup with descriptive message.
+- **Traceability:** F-040 (AC6)
+
+---
+
+### 5.15 Annotation Metadata Passthrough (TC-EXTRAANNOT-xxx)
+
+**Test File:** `tests/unit/adapters/test_extra_annotations.py`
+
+---
+
+#### TC-EXTRAANNOT-001: mcp_ prefixed keys extracted and prefix stripped
+
+- **Priority:** P2
+- **Type:** Unit
+- **Test Data:** `annotations = ModuleAnnotations(extra={"mcp_category": "image", "mcp_cost": "high"})`
+- **Steps:**
+  1. Call `AnnotationMapper.to_description_suffix(annotations)`.
+  2. Assert suffix contains `category: image` and `cost: high`.
+  3. Assert suffix does NOT contain `mcp_category` or `mcp_cost`.
+- **Expected Result:** Prefix stripped, values appended to description.
+- **Traceability:** F-041 (AC1, AC3)
+
+---
+
+#### TC-EXTRAANNOT-002: Non-mcp_ keys ignored
+
+- **Priority:** P2
+- **Type:** Unit
+- **Test Data:** `annotations = ModuleAnnotations(extra={"internal_flag": "x", "mcp_category": "image"})`
+- **Steps:**
+  1. Call `AnnotationMapper.to_description_suffix(annotations)`.
+  2. Assert suffix contains `category: image`.
+  3. Assert suffix does NOT contain `internal_flag`.
+- **Expected Result:** Only mcp_ keys extracted.
+- **Traceability:** F-041 (AC2)
+
+---
+
+#### TC-EXTRAANNOT-003: Non-string mcp_ values silently ignored
+
+- **Priority:** P2
+- **Type:** Unit
+- **Test Data:** `annotations = ModuleAnnotations(extra={"mcp_count": 42, "mcp_category": "image"})`
+- **Steps:**
+  1. Call `AnnotationMapper.to_description_suffix(annotations)`.
+  2. Assert suffix contains `category: image`.
+  3. Assert suffix does NOT contain `count` or `42`.
+- **Expected Result:** Non-string values ignored; string values included.
+- **Traceability:** F-041 (AC4)
+
+---
+
+#### TC-EXTRAANNOT-004: Empty extra dict produces no change
+
+- **Priority:** P2
+- **Type:** Unit
+- **Test Data:** `annotations = ModuleAnnotations()` (default empty extra)
+- **Steps:**
+  1. Call `AnnotationMapper.to_description_suffix(annotations)`.
+  2. Assert no extra metadata in suffix (standard annotations only).
+- **Expected Result:** No extra lines appended.
+- **Traceability:** F-041 (AC6)
 
 ---
 

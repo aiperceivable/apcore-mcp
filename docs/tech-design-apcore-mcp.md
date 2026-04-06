@@ -3,12 +3,12 @@
 | Field       | Value                                                                    |
 |-------------|--------------------------------------------------------------------------|
 | Title       | apcore-mcp: Automatic MCP Server & OpenAI Tools Bridge                   |
-| Version     | 1.5                                                                      |
-| Date        | 2026-03-31                                                               |
+| Version     | 1.7                                                                      |
+| Date        | 2026-04-06                                                               |
 | Author      | aiperceivable Engineering Team                                             |
 | Status      | Draft                                                                    |
 | Reviewers   | apcore Core Maintainers, Community Contributors                          |
-| PRD Ref     | `docs/prd-apcore-mcp.md` v1.5                                           |
+| PRD Ref     | `docs/prd-apcore-mcp.md` v1.7                                           |
 | License     | Apache 2.0                                                               |
 
 ---
@@ -64,11 +64,11 @@ apcore modules carry rich, machine-readable metadata -- `input_schema` (JSON Sch
 
 ### 2.1 PRD Summary
 
-The PRD (`docs/prd-apcore-mcp.md` v1.5) defines 35 features across three priority tiers:
+The PRD (`docs/prd-apcore-mcp.md` v1.7) defines 41 features across three priority tiers:
 
 - **P0 (9 features, F-001 through F-009):** Core schema mapping, annotation mapping, execution routing, error mapping, `serve()` function, stdio/Streamable HTTP transports, `to_openai_tools()`, CLI entry point.
-- **P1 (8 features, F-010 through F-016, F-032):** SSE transport, OpenAI annotation embedding, OpenAI strict mode, structured output, Executor passthrough, dynamic tool registration, logging, custom output formatter.
-- **P2 (18 features, F-017 through F-031, F-033 through F-035):** Filtering for `to_openai_tools()` and `serve()`, health check endpoint, MCP resource exposure, Prometheus metrics endpoint, metrics collector parameter, input validation parameter, streaming and progress support, MCPServer background wrapper, MCP Tool Explorer, JWT authentication, approval system, AI guidance fields, AI intent metadata, streaming annotations, Config Bus namespace registration, Error Formatter Registry integration, dot-namespaced event types.
+- **P1 (11 features, F-010 through F-016, F-032, F-036, F-038):** SSE transport, OpenAI annotation embedding, OpenAI strict mode, structured output, Executor passthrough, dynamic tool registration, logging, custom output formatter, pipeline strategy selection, tool output redaction.
+- **P2 (21 features, F-017 through F-031, F-033 through F-035, F-037, F-039 through F-041):** Filtering for `to_openai_tools()` and `serve()`, health check endpoint, MCP resource exposure, Prometheus metrics endpoint, metrics collector parameter, input validation parameter, streaming and progress support, MCPServer background wrapper, MCP Tool Explorer, JWT authentication, approval system, AI guidance fields, AI intent metadata, streaming annotations, Config Bus namespace registration, Error Formatter Registry integration, dot-namespaced event types, pipeline observability, tool preflight validation, YAML pipeline configuration, annotation metadata passthrough.
 
 ### 2.2 Design-to-PRD Traceability Matrix
 
@@ -102,6 +102,12 @@ The PRD (`docs/prd-apcore-mcp.md` v1.5) defines 35 features across three priorit
 | Config Bus Namespace         | F-033                       | P2       |
 | Error Formatter Registry     | F-034                       | P2       |
 | Dot-Namespaced Events        | F-035                       | P2       |
+| Pipeline Strategy Manager    | F-036                       | P1       |
+| Pipeline Trace Handler       | F-037                       | P2       |
+| Output Redactor              | F-038                       | P1       |
+| Preflight Validator          | F-039                       | P2       |
+| YAML Pipeline Config Loader  | F-040                       | P2       |
+| Extra Annotation Mapper      | F-041                       | P2       |
 
 ### 2.3 Key Constraints from User Requirements
 
@@ -880,8 +886,17 @@ class AnnotationMapper:
 
         Returns:
             Empty string if annotations is None or all values are defaults.
-            Otherwise: "\\n\\n[Annotations: readonly=true, destructive=false, ...]"
-            Only fields that differ from defaults are included.
+            Otherwise builds a multi-section suffix:
+
+            1. Safety warnings (if applicable):
+               - If destructive=True: "WARNING: DESTRUCTIVE - This operation may irreversibly modify or delete data."
+               - If requires_approval=True: "REQUIRES APPROVAL: Human confirmation is required before execution."
+            2. Machine-readable annotation block:
+               "\\n\\n[Annotations: readonly=true, destructive=true, ...]"
+               Only fields that differ from defaults are included.
+            3. F-041 mcp_ extra metadata (if present):
+               Keys from annotations.extra prefixed with "mcp_" are extracted, prefix stripped,
+               and appended as "\\n{stripped_key}: {value}" (string values only).
 
         Default values (excluded from output when matching):
             readonly=False, destructive=False, idempotent=False,
@@ -923,12 +938,25 @@ from mcp.types import CallToolResult
 class ExecutionRouter:
     """Routes MCP tool calls through the apcore Executor pipeline."""
 
-    def __init__(self, executor: Executor) -> None:
+    def __init__(
+        self,
+        executor: Executor,
+        *,
+        redact_output: bool = True,       # F-038: apply redact_sensitive() to output
+        trace: bool = False,               # F-037: use call_async_with_trace()
+        output_schema_map: dict[str, dict] | None = None,  # module_id → output_schema
+    ) -> None:
         """Initialize the router with an Executor instance.
 
         Args:
             executor: Pre-configured apcore Executor instance.
                       Must have a valid Registry attached.
+            redact_output: When True (default), applies redact_sensitive()
+                          to module output before serialization. (F-038)
+            trace: When True, uses call_async_with_trace() to capture
+                   PipelineTrace alongside output. (F-037)
+            output_schema_map: Pre-built mapping of module_id to output_schema
+                              dicts for redaction. Built during tool registration.
 
         Raises:
             TypeError: If executor is not an instance of apcore.Executor.
@@ -942,11 +970,15 @@ class ExecutionRouter:
         """Execute a tool call through the Executor pipeline.
 
         Steps:
-        1. Call executor.call_async(tool_name, arguments).
-        2. On success: serialize output dict to JSON string,
+        1. (if trace) Call executor.call_async_with_trace(tool_name, arguments),
+           capturing (output, PipelineTrace). Otherwise call executor.call_async().
+        2. (if redact_output) Call redact_sensitive(output, output_schema)
+           to replace x-sensitive fields and _secret_* keys with "***REDACTED***".
+        3. On success: serialize output dict to JSON string,
            return CallToolResult with TextContent and isError=False.
-        3. On apcore error: delegate to ErrorMapper.to_mcp_error().
-        4. On unexpected exception: log full traceback at ERROR level,
+           If trace mode: include _meta.trace in response.
+        4. On apcore error: delegate to ErrorMapper.to_mcp_error().
+        5. On unexpected exception: log full traceback at ERROR level,
            return sanitized "Internal error occurred" via ErrorMapper.
 
         Args:
@@ -957,6 +989,24 @@ class ExecutionRouter:
         Returns:
             CallToolResult with either success content or error content.
             Never raises -- all errors are caught and converted to CallToolResult.
+        """
+
+    async def validate_tool(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any],
+    ) -> PreflightResult:
+        """Run dry-run validation via Executor.validate(). (F-039)
+
+        Executes only pure=True pipeline steps (context, call-chain guard,
+        module lookup, ACL, schema validation). No side effects.
+
+        Args:
+            tool_name: The MCP tool name (equals apcore module_id).
+            arguments: The tool arguments dict.
+
+        Returns:
+            PreflightResult with per-check pass/fail results.
         """
 ```
 
@@ -1900,6 +1950,207 @@ These are appended to the tool description as labeled lines, giving AI agents ri
 
 ---
 
+### 6.14 Pipeline Strategy Manager (F-036)
+
+**File:** `src/apcore_mcp/server/strategy.py`
+
+**Responsibility:** Resolve the pipeline execution strategy from `serve()` parameters, CLI flags, and Config Bus, then configure the `Executor` accordingly.
+
+```python
+VALID_STRATEGIES = {"standard", "internal", "testing", "performance", "minimal"}
+
+def resolve_strategy(
+    strategy: str | None,
+    config: Config | None,
+) -> str:
+    """Resolve strategy name from parameter or Config Bus.
+
+    Priority: explicit parameter > Config Bus mcp.pipeline.strategy > "standard" default.
+
+    Args:
+        strategy: Explicit strategy name from serve() or CLI.
+        config: apcore Config instance for Config Bus lookup.
+
+    Returns:
+        Resolved strategy name.
+
+    Raises:
+        ValueError: If strategy name not in VALID_STRATEGIES.
+    """
+```
+
+**Data flow:** CLI `--strategy` → `serve()` `strategy` param → `resolve_strategy()` → `Executor(registry, strategy=strategy)`.
+
+**Interaction with F-040:** When `mcp.pipeline` YAML config is present, it takes precedence over the strategy parameter (WARNING logged). The YAML pipeline config uses `build_strategy_from_config()` which produces a custom `ExecutionStrategy` object, bypassing preset strategy resolution.
+
+---
+
+### 6.15 Pipeline Trace Handler (F-037)
+
+**File:** `src/apcore_mcp/server/trace.py`
+
+**Responsibility:** Capture, format, and distribute `PipelineTrace` data from `call_async_with_trace()`.
+
+```python
+from apcore import PipelineTrace
+
+def trace_to_meta(trace: PipelineTrace) -> dict[str, Any]:
+    """Convert PipelineTrace to _meta-compatible dict.
+
+    Returns:
+        {
+            "strategy_name": "standard",
+            "total_duration_ms": 42.5,
+            "steps": [
+                {"name": "context_creation", "duration_ms": 0.3,
+                 "skipped": false, "skip_reason": null},
+                ...
+            ]
+        }
+
+    Security: Excludes all input/output data. Only step metadata and timing.
+    """
+
+def trace_to_metrics(
+    trace: PipelineTrace,
+    metrics_collector: Any,
+) -> None:
+    """Send per-step timing to MetricsCollector.
+
+    Emits metric events:
+      apcore_mcp.pipeline.step.duration_ms{step="<name>"} = <duration>
+      apcore_mcp.pipeline.total_duration_ms = <total>
+
+    No-op if metrics_collector is None.
+    Exceptions logged at WARNING; never fails the tool call.
+    """
+```
+
+---
+
+### 6.16 Output Redactor (F-038)
+
+**File:** `src/apcore_mcp/server/redactor.py`
+
+**Responsibility:** Thin wrapper around `apcore.utils.redact_sensitive()` for MCP output sanitization.
+
+```python
+from apcore import redact_sensitive, REDACTED_VALUE
+
+def redact_tool_output(
+    output: dict[str, Any],
+    output_schema: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Apply redact_sensitive() to module output.
+
+    Args:
+        output: Raw module output dict.
+        output_schema: Module's output_schema for x-sensitive field lookup.
+
+    Returns:
+        Deep copy with sensitive values replaced by "***REDACTED***".
+        Returns original output unchanged if output_schema is None or {}.
+    """
+```
+
+**Data flow:** `Executor output` → `redact_tool_output(output, output_schema)` → `json.dumps()` → `CallToolResult`
+
+**Schema resolution:** The `output_schema_map` is built during tool registration by `MCPServerFactory.build_tools()` and passed to `ExecutionRouter.__init__()`. For each module, `registry.get_definition(module_id).output_schema` provides the schema.
+
+---
+
+### 6.17 Preflight Validator (F-039)
+
+**File:** `src/apcore_mcp/server/preflight.py`
+
+**Responsibility:** Provide dry-run validation of tool calls via `Executor.validate()`.
+
+**Integration with ExecutionRouter:** `ExecutionRouter.validate_tool()` calls `Executor.validate(module_id, inputs)` which internally creates a `PipelineContext(dry_run=True)`. Only `pure=True` steps execute: context_creation, call_chain_guard, module_lookup, acl_check, input_validation, output_validation, return_result. All `pure=False` steps (approval_gate, middleware_before, execute, middleware_after) are skipped.
+
+**Integration with Explorer:** `POST /explorer/tools/<name>/validate` endpoint delegates to `validate_tool()` and returns the `PreflightResult` serialized as JSON. This endpoint is available when `explorer=True` regardless of `allow_execute`, since validation has no side effects.
+
+**PreflightResult structure:**
+```json
+{
+    "valid": true,
+    "checks": [
+        {"check": "module_id", "passed": true, "error": null, "warnings": []},
+        {"check": "call_chain", "passed": true, "error": null, "warnings": []},
+        {"check": "acl", "passed": true, "error": null, "warnings": []},
+        {"check": "schema", "passed": true, "error": null, "warnings": []}
+    ],
+    "requires_approval": false
+}
+```
+
+---
+
+### 6.18 YAML Pipeline Config Loader (F-040)
+
+**File:** `src/apcore_mcp/server/pipeline_config.py`
+
+**Responsibility:** Read `mcp.pipeline` from Config Bus and build a custom `ExecutionStrategy` via `build_strategy_from_config()`.
+
+```python
+from apcore import build_strategy_from_config
+
+def load_pipeline_config(
+    config: Config,
+    *,
+    registry: Registry,
+    acl: ACL | None = None,
+    approval_handler: Any | None = None,
+    middlewares: list | None = None,
+) -> ExecutionStrategy | None:
+    """Load pipeline configuration from Config Bus mcp.pipeline section.
+
+    Returns:
+        ExecutionStrategy if mcp.pipeline section is present, None otherwise.
+
+    Raises:
+        ValueError: If pipeline config is invalid.
+    """
+```
+
+**YAML config format:**
+```yaml
+mcp:
+  pipeline:
+    strategy: "standard"          # Base strategy (optional, default: standard)
+    remove: ["acl_check"]         # Steps to remove
+    configure:                     # Step field overrides
+      input_validation:
+        timeout_ms: 5000
+      execute:
+        timeout_ms: 30000
+    steps:                         # Custom steps (advanced)
+      - type: "custom_auth"
+        after: "context_creation"
+        config:
+          provider: "oauth2"
+```
+
+**Precedence:** YAML pipeline config > `strategy` parameter > `"standard"` default. When YAML config and `strategy` parameter both present, YAML config wins with WARNING log.
+
+---
+
+### 6.19 Extra Annotation Mapper (F-041)
+
+**Responsibility:** Extract `mcp_` prefixed keys from `ModuleAnnotations.extra` and append them to the tool description.
+
+This is an extension of the existing `AnnotationMapper` (§6.2), not a separate file.
+
+**Addition to `AnnotationMapper.to_description_suffix()`:**
+
+After generating the standard `[Annotations: ...]` suffix, the mapper checks `annotations.extra` for keys prefixed with `mcp_`. For each matching key with a string value, it appends `\n{stripped_key}: {value}` to the description.
+
+**Example:**
+- Input: `annotations.extra = {"mcp_category": "image", "mcp_cost": "high", "internal_flag": "x"}`
+- Appended to description: `\ncategory: image\ncost: high`
+- The key `internal_flag` is ignored (no `mcp_` prefix); non-string values silently ignored.
+
+---
+
 ## 7. API Design
 
 ### 7.1 `serve()` Function
@@ -1934,6 +2185,9 @@ def serve(
     explorer_project_name: str | None = None,
     explorer_project_url: str | None = None,
     output_formatter: Callable[[dict], str] | None = None,
+    strategy: str | None = None,          # F-036: "standard"|"internal"|"testing"|"performance"|"minimal"
+    trace: bool = False,                   # F-037: enable call_async_with_trace()
+    redact_output: bool = True,            # F-038: apply redact_sensitive() to output
 ) -> None:
     """Launch an MCP Server exposing all apcore modules as tools.
 
@@ -1947,9 +2201,10 @@ def serve(
             Type: Registry | Executor
             Required: Yes
             Description: An apcore Registry or Executor instance.
-                If a Registry is passed, a default Executor(registry) is created.
-                If an Executor is passed, its internal Registry is used for tool
-                discovery and the Executor is used for tool call routing.
+                If a Registry is passed, a default Executor(registry, strategy=strategy)
+                is created. If an Executor is passed, its internal Registry is used for
+                tool discovery and the Executor is used for tool call routing (strategy
+                parameter ignored with WARNING log).
             Validation: Must be an instance of Registry or Executor.
             Raises TypeError if neither.
 
@@ -2346,27 +2601,29 @@ tools/call request
                               )
                                         |
                                         v
-                                                    executor.call_async(
-                                                      "image.resize",
-                                                      {"width": 800, "height": 600}
-                                                    )
+                                                    (trace?) executor.call_async_with_trace()
+                                                    (else)   executor.call_async()
                                                               |
                                                               v
-                                                    10-step pipeline:
+                                                    11-step pipeline:
                                                     1. Context creation
-                                                    2. Safety checks
+                                                    2. Call-chain guard
                                                     3. Module lookup
                                                     4. ACL check
-                                                    5. Input validation
+                                                    5. Approval gate
                                                     6. Middleware before
-                                                    7. module.execute()
-                                                    8. Output validation
-                                                    9. Middleware after
-                                                    10. Return output
+                                                    7. Input validation
+                                                    8. module.execute()
+                                                    9. Output validation
+                                                    10. Middleware after
+                                                    11. Return result
                                                               |
                                                               v
                                                     {"status": "ok",
                                                      "path": "/out/img.png"}
+                                        |
+                                        v
+                              (redact_output?) redact_sensitive(output, output_schema)
                                         |
                                         v
                               json.dumps(output)
@@ -2515,6 +2772,10 @@ Ensures MCP clients always receive a valid object schema.
 | `CallDepthExceededError`      | `CALL_DEPTH_EXCEEDED`         | True        | `"Call depth limit exceeded"`                        | None (call chain NOT exposed)                         |
 | `CircularCallError`           | `CIRCULAR_CALL`               | True        | `"Circular call detected"`                           | None (call chain NOT exposed)                         |
 | `CallFrequencyExceededError`  | `CALL_FREQUENCY_EXCEEDED`     | True        | `"Call frequency limit exceeded"`                    | None (internal safety detail NOT exposed)             |
+| `ConfigEnvMapConflictError`   | `CONFIG_ENV_MAP_CONFLICT`     | True        | `"Config env map conflict: {env_var}"`               | env_var, owner                                        |
+| `PipelineAbortError`          | N/A (not a ModuleError)       | True        | `"Pipeline aborted at step: {step} — {explanation}"` | step name; explanation if present                     |
+| `StepNotFoundError`           | N/A (not a ModuleError)       | True        | `"Pipeline step not found: {message}"`               | error message                                         |
+| `VersionIncompatibleError`    | `VERSION_INCOMPATIBLE`        | True        | `"Version incompatible: {message}"`                  | error message                                         |
 | Any other `ModuleError`       | `{error.code}`                | True        | `"Module error: {error.code}"`                       | error.code only                                       |
 | Any non-`ModuleError` `Exception` | N/A                       | True        | `"Internal error occurred"`                          | None (full traceback logged server-side at ERROR)     |
 
@@ -2858,7 +3119,7 @@ Run with `N = 10, 50, 100, 500` to establish linear scaling characteristics.
 
 ### 12.3 Mitigation Details
 
-1. **Input validation:** Every tool call argument dict passes through `Executor.call_async()` step 5 (Pydantic validation). Invalid inputs are rejected with field-level error details.
+1. **Input validation:** Every tool call argument dict passes through `Executor.call_async()` step 7 (Pydantic validation). Invalid inputs are rejected with field-level error details.
 
 2. **ACL enforcement:** If an `Executor` is initialized with an `ACL` instance, all tool calls go through step 4 (ACL check). Denied calls return "Access denied" without exposing the caller identity or ACL rule details.
 
@@ -2905,7 +3166,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-    "apcore>=0.15.1,<1.0",
+    "apcore>=0.17.1,<1.0",
     "mcp>=1.0.0,<2.0",
     "PyJWT>=2.0",
 ]
@@ -2995,10 +3256,10 @@ show_missing = true
 
 | apcore-python Version | apcore-mcp Support | Notes                                    |
 |-----------------------|-------------------|------------------------------------------|
-| < 0.5.0               | Not supported     | Missing Registry event system, ModuleAnnotations |
-| 0.5.0                 | Full support      | Current version (verified in source: `__version__ = "0.5.0"`) |
-| 0.5.x                 | Full support      | Patch versions (compatible)              |
-| 0.6.x - 0.9.x         | Expected support  | Minor versions should be backward compatible |
+| < 0.17.0              | Not supported     | Missing Pipeline v2, call-chain guard rename, step order fix |
+| 0.17.0                | Full support      | Current target: Pipeline v2 delegation, YAML pipeline config, Step metadata |
+| 0.17.x                | Full support      | Patch versions (compatible)              |
+| 0.18.x+               | Expected support  | Minor versions should be backward compatible |
 | >= 1.0.0              | Requires testing  | Major version may introduce breaking changes |
 
 **Key API contract with apcore-python (verified in source code):**
@@ -3010,8 +3271,8 @@ show_missing = true
 | `Registry.list(tags=, prefix=) -> list[str]` | Factory, Converter | Yes |
 | `Registry.get_definition(module_id) -> ModuleDescriptor \| None` | Factory, Converter | Yes |
 | `Registry.on(event, callback)`        | RegistryListener     | Yes      |
-| `Executor.__init__(registry, acl=, middlewares=, config=)` | serve() | Yes |
-| `Executor.call_async(module_id, inputs, context=) -> dict` | ExecutionRouter | Yes |
+| `Executor.__init__(registry, acl=, middlewares=, config=, strategy=)` | serve() | Yes |
+| `Executor.call_async(module_id, inputs, context=, version_hint=) -> dict` | ExecutionRouter | Yes |
 | `Executor.registry -> Registry`       | serve(), to_openai_tools() | Yes |
 | `ModuleDescriptor.module_id: str`     | All components       | Yes      |
 | `ModuleDescriptor.description: str`   | All components       | Yes      |
@@ -3086,17 +3347,26 @@ show_missing = true
 
 5. **Middleware injection:** xxx-apcore projects can add custom middleware to the Executor before passing it to `serve()`, enabling domain-specific logging, rate limiting, or transformation.
 
-### 15.3 Planned v2 Features
+### 15.3 Implemented in SDKs (Not Yet Documented as Formal Features)
+
+These capabilities exist in the Python, TypeScript, and/or Rust SDK implementations and should be formalized in future spec updates:
+
+| Feature                  | Description                                                           | SDK Status    |
+|--------------------------|-----------------------------------------------------------------------|---------------|
+| MCP Resource exposure    | Expose module documentation as MCP Resources (`docs://{moduleId}` URI scheme) via `list_resources`/`read_resource` handlers (F-020). Only modules with non-null `documentation` field generate resources. | Python + TS |
+| Streaming tool results   | Bridge `executor.stream()` to MCP clients via `notifications/progress`. Client opt-in via `progressToken`. Each chunk sent as progress notification. Chunks accumulated via recursive deep merge (depth cap: 32) into final `CallToolResult`. | Python + TS |
+| MCP Tool Explorer        | Browser-based UI via `mcp-embedded-ui` library. Mounts at `explorer_prefix` (default `/explorer`) when `explorer=True`. Supports tool browsing (auth-exempt), tool execution (requires auth if `allow_execute=True`), and project metadata display. | Python + TS + Rust |
+| Health/metrics endpoints | `/health` endpoint with uptime and module count; `/metrics` for MetricsExporter (F-019, F-021). | Python + TS |
+| Context injection        | MCP callbacks (`report_progress`, `elicit`) injected into apcore `Context.data` via `MCP_PROGRESS_KEY` and `MCP_ELICIT_KEY`. JWT `Identity` injected via ContextVar (Python), AsyncLocalStorage (TS), or task-local (Rust). | Python + TS + Rust |
+| Safety warnings          | `AnnotationMapper.to_description_suffix()` prepends safety text: `"WARNING: DESTRUCTIVE"` for `destructive=True`, `"REQUIRES APPROVAL"` for `requires_approval=True`. | Python + TS + Rust |
+
+### 15.4 Planned v2 Features
 
 | Feature                  | Description                                                           | Depends On    |
 |--------------------------|-----------------------------------------------------------------------|---------------|
-| MCP Resource exposure    | Expose module documentation as MCP Resources (F-020)                  | v1 stable     |
-| Health check endpoint    | `/health` endpoint for HTTP transports (F-019)                        | v1 stable     |
 | A2A agent card export    | Export registry as A2A-compatible agent card                          | apcore-a2a spec |
-| Streaming tool results   | Bridge `executor.stream()` to MCP clients via `notifications/progress`. Client opt-in via `progressToken`. Each chunk sent as progress notification with `message` containing JSON-serialized chunk. Final `CallToolResult` contains complete accumulated result. | apcore core `stream()` support |
 | Tool usage analytics     | Track tool call counts, latencies, error rates                        | v1 observability |
 | Multi-registry support   | Merge tools from multiple registries into one server                  | v1 stable     |
-| MCP Tool Explorer        | Optional browser UI for inspecting and testing MCP tools (F-026). Single HTML/JS asset shared across all `apcore-mcp-{lang}` implementations. Mounts at configurable `explorer_prefix` (default `/explorer`) when `explorer=True`. | HTTP transport |
 
 ---
 
@@ -3107,7 +3377,7 @@ show_missing = true
 | Term                    | Definition                                                                                      |
 |-------------------------|-------------------------------------------------------------------------------------------------|
 | **apcore**              | Schema-driven module development framework providing Registry, Executor, and schema validation  |
-| **apcore-python**       | Python SDK implementation of apcore (v0.5.0). Source: `/Users/tercel/WorkSpace/aiperceivable/apcore-python/` |
+| **apcore-python**       | Python SDK implementation of apcore (v0.17.0). Source: `/Users/tercel/WorkSpace/aiperceivable/apcore-python/` |
 | **MCP**                 | Model Context Protocol -- Anthropic's open protocol for AI assistant tool integration            |
 | **MCP Server**          | Process exposing tools/resources/prompts to MCP clients via the MCP protocol                    |
 | **MCP Client**          | AI assistant app connecting to MCP Servers (Claude Desktop, Cursor, Windsurf)                   |
@@ -3116,14 +3386,19 @@ show_missing = true
 | **OpenAI Function Calling** | OpenAI's tool-use mechanism with name, description, parameters (JSON Schema)                |
 | **Strict Mode**         | OpenAI feature: `strict: true` constrains model output to exactly match schema                  |
 | **Registry**            | apcore class for discovering, registering, querying modules (thread-safe, event-driven)         |
-| **Executor**            | apcore class orchestrating 10-step execution pipeline: context, safety, ACL, validation, middleware, execute |
+| **Executor**            | apcore class orchestrating 11-step execution pipeline via `PipelineEngine`: context, call-chain guard, lookup, ACL, approval, middleware, validation, execute, output validation, middleware after, return |
 | **ModuleDescriptor**    | Dataclass: module_id, name, description, input_schema, output_schema, annotations, tags, version |
-| **ModuleAnnotations**   | Frozen dataclass: readonly, destructive, idempotent, requires_approval, open_world              |
+| **ModuleAnnotations**   | Frozen dataclass: readonly, destructive, idempotent, requires_approval, open_world, streaming, cacheable, cache_ttl, cache_key_fields, paginated, pagination_style, extra |
 | **ModuleError**         | Base exception for apcore errors, with code, message, details, timestamp                        |
 | **xxx-apcore**          | Convention for domain adapter projects: comfyui-apcore, vnpy-apcore, blender-apcore             |
 | **Transport**           | Communication mechanism: stdio (stdin/stdout), Streamable HTTP, SSE (Server-Sent Events)        |
 | **$ref inlining**       | Process of replacing JSON Schema `$ref` pointers with the referenced definitions inline         |
 | **CallToolResult**      | MCP SDK type for tool call responses, containing content list and isError flag                   |
+| **PipelineTrace**       | Dataclass recording execution details for an entire pipeline run: module_id, strategy_name, steps list, total_duration_ms, success |
+| **StepTrace**           | Dataclass recording execution details for a single pipeline step: name, duration_ms, result, skipped, skip_reason |
+| **PreflightResult**     | Dataclass returned by `Executor.validate()`: valid (bool), checks (list of per-step pass/fail), requires_approval |
+| **ExecutionStrategy**   | apcore class defining an ordered sequence of pipeline steps with insert/remove/replace operations |
+| **redact_sensitive**    | apcore utility function replacing x-sensitive fields and _secret_* keys with `"***REDACTED***"` |
 
 ### 16.2 References
 

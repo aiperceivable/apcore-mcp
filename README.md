@@ -39,14 +39,14 @@
     ```bash
     pip install apcore-mcp
     ```
-    *Requires Python 3.11+ and apcore 0.13.0+.*
+    *Requires Python 3.11+ and apcore 0.17.1+.*
 
 === "📘 TypeScript"
 
     ```bash
     npm install apcore-mcp
     ```
-    *Requires Node.js 18+ and apcore 0.13.0+.*
+    *Requires Node.js 18+ and apcore 0.17.1+.*
 
 ---
 
