@@ -7,6 +7,7 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python Version](https://img.shields.io/badge/python-3.11%2B-blue)](https://github.com/aiperceivable/apcore-mcp-python)
 [![TypeScript Version](https://img.shields.io/badge/TypeScript-Node_18%2B-blue)](https://github.com/aiperceivable/apcore-mcp-typescript)
+[![Rust Version](https://img.shields.io/badge/Rust-1.75%2B-blue)](https://github.com/aiperceivable/apcore-mcp-rust)
 
 > **Build once, invoke by Code or AI.**
 
@@ -48,6 +49,13 @@
     ```
     *Requires Node.js 18+ and apcore 0.17.1+.*
 
+=== "🦀 Rust"
+
+    ```bash
+    cargo add apcore-mcp
+    ```
+    *Requires Rust 1.75+ and apcore 0.17.1+.*
+
 ---
 
 ## Quick Start
@@ -84,6 +92,18 @@
     });
     ```
 
+=== "🦀 Rust"
+
+    ```rust
+    use apcore_mcp::APCoreMCP;
+
+    // Launch MCP server over stdio
+    let mcp = APCoreMCP::builder()
+        .backend("./extensions")
+        .build()?;
+    mcp.serve()?;
+    ```
+
 === "💻 CLI"
 
     ```bash
@@ -111,6 +131,17 @@
     import { toOpenaiTools } from "apcore-mcp";
 
     const tools = toOpenaiTools("./extensions");
+    ```
+
+=== "🦀 Rust"
+
+    ```rust
+    use apcore_mcp::APCoreMCP;
+
+    let mcp = APCoreMCP::builder()
+        .backend("./extensions")
+        .build()?;
+    let tools = mcp.to_openai_tools(false, true)?;
     ```
 
 ---
@@ -156,6 +187,7 @@ apcore-mcp acts as a protocol-specific adapter on top of the apcore Registry, ma
 |----------|-----------|---------|--------|
 | Python | [apcore-mcp-python](https://github.com/aiperceivable/apcore-mcp-python) | `pip install apcore-mcp` | ✅ v0.10.x |
 | TypeScript | [apcore-mcp-typescript](https://github.com/aiperceivable/apcore-mcp-typescript) | `npm install apcore-mcp` | ✅ v0.10.x |
+| Rust | [apcore-mcp-rust](https://github.com/aiperceivable/apcore-mcp-rust) | `cargo add apcore-mcp` | ✅ v0.10.x |
 | Go | apcore-mcp-go | — | Planned |
 
 ## License

@@ -104,6 +104,39 @@ The unified entry point — configure once, use everywhere.
     mcp.executor    // underlying Executor
     ```
 
+=== "Rust"
+
+    ```rust
+    use apcore_mcp::{APCoreMCP, ServeOptions};
+
+    let mcp = APCoreMCP::builder()
+        .backend("./extensions")             // path, Arc<Registry>, or Arc<Executor>
+        .name("apcore-mcp")                  // server name
+        .version("1.0.0")                    // defaults to crate version
+        .tags(vec!["public".into()])         // filter modules by tags
+        .prefix("image")                     // filter modules by ID prefix
+        .transport("streamable-http")        // "stdio" | "streamable-http" | "sse"
+        .host("127.0.0.1")                  // host for HTTP transports
+        .port(8000)                          // port for HTTP transports
+        .validate_inputs(true)               // validate inputs against schemas
+        .authenticator(auth)                 // Authenticator for JWT/token auth (HTTP only)
+        .metrics_collector(collector)         // MetricsExporter for /metrics endpoint
+        .output_formatter(formatter)         // custom result formatting
+        .approval_handler(handler)           // approval handler for runtime approval
+        .build()?;
+
+    // Launch as MCP server (blocking)
+    mcp.serve(ServeOptions::default())?;
+
+    // Export as OpenAI tools
+    let tools = mcp.to_openai_tools(false, true)?;
+
+    // Inspect
+    let tool_names = mcp.tools();     // list of module IDs
+    let registry = mcp.registry();    // underlying Registry
+    let executor = mcp.executor();    // underlying Executor
+    ```
+
 ### `serve()` (function-based)
 
 The function-based API is still fully supported for users who prefer it.
@@ -143,6 +176,22 @@ The function-based API is still fully supported for users who prefer it.
       logLevel: "INFO",
       authenticator: undefined,      // JWTAuthenticator instance
     });
+    ```
+
+=== "Rust"
+
+    ```rust
+    use apcore_mcp::{serve, ServeConfig};
+
+    serve("./extensions", ServeConfig {
+        transport: "streamable-http".into(),
+        host: "127.0.0.1".into(),
+        port: 8000,
+        name: "apcore-mcp".into(),
+        explorer: true,
+        allow_execute: true,
+        ..Default::default()
+    })?;
     ```
 
 ### `async_serve()` Options

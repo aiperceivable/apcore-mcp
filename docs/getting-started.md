@@ -18,6 +18,12 @@ Install **apcore-mcp** alongside your existing apcore project.
     npm install apcore-mcp
     ```
 
+=== "Rust"
+
+    ```bash
+    cargo add apcore-mcp
+    ```
+
 ## 2. Zero-Code CLI Usage
 
 If you have an `extensions/` directory containing your apcore modules, you can launch an MCP server immediately without writing any code.
@@ -48,6 +54,20 @@ If you have an `extensions/` directory containing your apcore modules, you can l
                    --port 8000 
                    --explorer 
                    --allow-execute
+    ```
+
+=== "Rust"
+
+    ```bash
+    # stdio (default)
+    apcore-mcp --extensions-dir ./extensions
+
+    # HTTP with Tool Explorer UI
+    apcore-mcp --extensions-dir ./extensions 
+               --transport streamable-http 
+               --port 8000 
+               --explorer 
+               --allow-execute
     ```
 
 Once running in HTTP mode with `--explorer`, visit `http://127.0.0.1:8000/explorer/` to browse and test your tools.
@@ -150,6 +170,39 @@ Integrate **apcore-mcp** directly into your application. The `APCoreMCP` class i
     ```
     </details>
 
+=== "Rust"
+
+    ```rust
+    use apcore_mcp::{APCoreMCP, ServeOptions};
+
+    // One line setup — auto-discovers all modules
+    let mcp = APCoreMCP::builder()
+        .backend("./extensions")
+        .build()?;
+
+    // Launch as MCP Server
+    mcp.serve(ServeOptions::default())?;
+
+    // Or convert to OpenAI tool definitions
+    let tools = mcp.to_openai_tools(false, true)?;
+    ```
+
+    You can also pass an existing Registry or Executor:
+
+    ```rust
+    use std::sync::Arc;
+    use apcore::registry::registry::Registry;
+    use apcore_mcp::APCoreMCP;
+
+    let registry = Arc::new(Registry::new());
+    // ... register modules ...
+    let mcp = APCoreMCP::builder()
+        .backend(registry)
+        .name("my-server")
+        .tags(vec!["public".into()])
+        .build()?;
+    ```
+
 ## 4. MCP Client Configuration
 
 To use your tools in desktop AI applications, add **apcore-mcp** to their configuration files.
@@ -179,6 +232,19 @@ Add this to `~/Library/Application Support/Claude/claude_desktop_config.json` (m
         "apcore": {
           "command": "npx",
           "args": ["apcore-mcp", "--extensions-dir", "/absolute/path/to/your/extensions"]
+        }
+      }
+    }
+    ```
+
+=== "Rust"
+
+    ```json
+    {
+      "mcpServers": {
+        "apcore": {
+          "command": "apcore-mcp",
+          "args": ["--extensions-dir", "/absolute/path/to/your/extensions"]
         }
       }
     }
