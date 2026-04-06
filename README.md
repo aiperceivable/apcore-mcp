@@ -172,11 +172,29 @@ apcore-mcp acts as a protocol-specific adapter on top of the apcore Registry, ma
 
 ---
 
+## Features & Specifications
+
+The project is architected as a set of modular features, each with its own specification to ensure consistency across languages:
+
+- **[Feature Overview](docs/features/overview.md)** — Implementation roadmap & dependencies
+- [Schema Converter](docs/features/schema-converter.md) — Reference resolution for AI protocols
+- [Annotation Mapper](docs/features/annotation-mapper.md) — Behavioral hint translation
+- [Execution Router](docs/features/execution-router.md) — Dispatcher for the 11-step pipeline
+- [Error Mapper](docs/features/error-mapper.md) — Protocol-compliant error feedback
+- [MCP Server Factory](docs/features/mcp-server-factory.md) — Core server builder
+- [OpenAI Converter](docs/features/openai-converter.md) — Tool exporter for OpenAI
+- [Transport Manager](docs/features/transport-manager.md) — Stdio/HTTP connectivity
+- [Registry Listener](docs/features/registry-listener.md) — Hot-reloading capabilities
+- [JWT Authenticator](docs/features/jwt-authenticator.md) — Bearer token security
+- [Approval Handler](docs/features/approval-handler.md) — Human-in-the-loop elicitation
+- [Explorer UI](docs/features/explorer-ui.md) — Interactive dev dashboard
+
+---
+
 ## Documentation
 
 - **[Full Documentation Site](https://aiperceivable.github.io/apcore-mcp/)**
 - **[Getting Started Guide](docs/getting-started.md)** — Installation and basic setup
-- [Feature Specs Overview](docs/features/overview.md) — All feature specifications
 - [Specifications (PRD, TDD, SRS)](docs/spec/)
 
 ---
