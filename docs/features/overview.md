@@ -1,7 +1,7 @@
 # Feature Overview
 
 > Auto-generated index of feature specs for apcore-mcp.
-> Updated: 2026-04-06
+> Updated: 2026-04-15
 
 ## Features
 
@@ -13,10 +13,12 @@
 | [Error Mapper](./error-mapper.md) | Translates exceptions to protocol-compliant errors. | none | draft |
 | [MCP Server Factory](./mcp-server-factory.md) | Builds the low-level MCP server instance. | schema-converter, annotation-mapper, execution-router | draft |
 | [OpenAI Converter](./openai-converter.md) | Exports modules as OpenAI-compatible tool definitions. | schema-converter, annotation-mapper | draft |
+| [Extension Bridge](./extension-bridge.md) | Wires apcore ExtensionManager into the MCP server pipeline. | mcp-server-factory, execution-router | draft |
 | [Transport Manager](./transport-manager.md) | Manages stdio and network communication layers. | mcp-server-factory | draft |
 | [Registry Listener](./registry-listener.md) | Enables hot-reloading of tools on registry changes. | mcp-server-factory | draft |
 | [JWT Authenticator](./jwt-authenticator.md) | Secures HTTP transports using bearer tokens. | none | draft |
 | [Approval Handler](./approval-handler.md) | Implements human-in-the-loop confirmation via MCP. | execution-router | draft |
+| [Async Task Bridge](./async-task-bridge.md) | Routes async-hinted modules to apcore's AsyncTaskManager and exposes task meta-tools. | execution-router, error-mapper | draft |
 | [Explorer UI](./explorer-ui.md) | Web dashboard for inspecting and testing tools. | mcp-server-factory, execution-router | draft |
 
 ## Execution Order
@@ -29,8 +31,10 @@ The implementation should follow this sequence to ensure core logic is stable be
 4. **Execution Router** — The bridge to the apcore Executor; depends on error-mapper.
 5. **OpenAI Converter** — High-value, zero-dependency feature for immediate utility.
 6. **MCP Server Factory** — Combines foundational modules into the core MCP server logic.
-7. **Transport Manager** — Enables connectivity (stdio, HTTP) for the server.
-8. **Registry Listener** — Adds dynamic capabilities once the base server is stable.
-9. **Approval Handler** — Enhances safety for the operational server.
-10. **JWT Authenticator** — Secures the server for network deployments.
-11. **Explorer UI** — Provides the final development and debugging interface.
+7. **Extension Bridge** — Wires apcore ExtensionManager into the factory and Executor before transports are layered on.
+8. **Transport Manager** — Enables connectivity (stdio, HTTP) for the server.
+9. **Registry Listener** — Adds dynamic capabilities once the base server is stable.
+10. **Approval Handler** — Enhances safety for the operational server.
+11. **Async Task Bridge** — Adds background task execution via apcore's AsyncTaskManager once approval semantics are in place.
+12. **JWT Authenticator** — Secures the server for network deployments.
+13. **Explorer UI** — Provides the final development and debugging interface.

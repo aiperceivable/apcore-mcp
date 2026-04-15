@@ -66,6 +66,30 @@ All updates to the internal tool dictionary are performed as an atomic operation
 ### Notification Debouncing
 To avoid "notification storms" during bulk registration (e.g., at startup or when loading a complex plugin), the listener can debounce `list_changed` notifications, sending only one message after a short quiet period.
 
+## Client Notification Bridge
+
+The Client Notification Bridge translates apcore Registry `register`/`unregister` events into MCP `notifications/tools/list_changed` messages delivered to connected clients.
+
+### Emission Triggers
+- On every successful `register` event (after the tool is added to the active tool collection).
+- On every successful `unregister` event (after the tool is removed).
+- Failed sync operations (e.g., `build_tool()` raises) MUST NOT emit notifications — tool list state remains unchanged.
+
+### Debouncing
+- The listener coalesces rapid register/unregister events within a 100ms quiet window.
+- An event schedules (or resets) a single pending notification timer; only one `notifications/tools/list_changed` is sent per quiet window.
+- The debounce timer is per-session for multi-session transports; stdio uses a single global timer.
+
+### Per-Session ACL Filtering
+- Before dispatching a notification to a session, the bridge evaluates the session's ACL (derived from auth context / session capabilities) against the changed tool set.
+- If none of the added/removed tools are visible to the session under its ACL, the notification is suppressed for that session.
+- ACL evaluation reuses the same filter logic that scopes `tools/list` responses, ensuring clients never learn of tools they cannot see.
+
+### Transport Behavior
+- **stdio (single session):** Exactly one peer. The listener holds a direct reference to the active session; notifications are dispatched inline on the event loop without fan-out.
+- **HTTP (multi-session):** The listener maintains a session registry. Each debounced notification is fanned out to all active sessions, with per-session ACL filtering applied independently. Sessions that disconnected during the debounce window are dropped silently.
+- Notification send failures on any individual session are logged and do not affect delivery to other sessions.
+
 ## Constraints
 
 - **Registry Compatibility**: Requires an apcore Registry that supports event listeners (standard in apcore-python >= 0.15.0).

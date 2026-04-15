@@ -70,6 +70,26 @@ If building a tool for one module fails (e.g., due to a malformed schema), the f
 ### Identity Reporting
 The factory ensures that the server correctly identifies itself to clients with a configurable name and version (e.g., `apcore-mcp v1.0.0`).
 
+### Custom Middleware Injection
+The public `serve()` entry point accepts an optional user-supplied middleware list:
+
+```python
+def serve(
+    registry: Registry,
+    *,
+    name: str = "apcore-mcp",
+    version: str = "...",
+    transport: str = "stdio",
+    middlewares: list[Middleware] | None = None,
+    # ... existing parameters
+) -> None: ...
+```
+
+When `middlewares` is provided, the factory passes the list through to the `ExecutionRouter` (and the underlying apcore `Executor`), which installs them after all built-in middlewares registered by the factory (e.g., logging, tracing, approval enforcement, redaction). This ordering guarantee — **built-ins first, user middlewares after** — ensures user hooks observe already-redacted inputs and participate in error recovery without subverting safety-critical layers. When `middlewares` is `None` or empty, behavior is unchanged. Each entry must be an `apcore.middleware.Middleware` instance; passing non-`Middleware` values raises a configuration error before the server starts.
+
+### Strict Schema Sourcing
+When building MCP tools, the factory prefers `Registry.exportSchema(moduleId, strict=true)` if the registry exposes it, using the registry-provided strict schema directly as the MCP `inputSchema`. If the call fails or the registry does not implement `exportSchema`, the factory falls back to local strict post-processing via the Schema Converter (see `docs/features/schema-converter.md`, "Strict Mode for MCP"). Both upstream behaviors yield identical strict output — the registry path is preferred because it avoids a redundant walk.
+
 ## Constraints
 
 - **Name Constraint**: The server name must be non-empty and must not exceed 255 characters.
@@ -80,6 +100,51 @@ The factory ensures that the server correctly identifies itself to clients with 
 
 - **Registry Empty**: If no modules are found, the factory logs a warning and produces an empty tool list rather than an error.
 - **Duplicate Registration**: Idempotently handles registration of tool handlers to prevent multiple definitions.
+
+## Extension Integration
+
+The factory integrates with apcore's `ExtensionManager` (see `apcore/docs/features/extension-system.md`) so applications can customize protocol-level behavior without forking the factory. This integration is mediated by the Extension Bridge (see `./extension-bridge.md`), which translates MCP-specific plugin points into apcore extension-point registrations and owns load-order policy.
+
+### `serve()` Signature Extension
+The top-level `serve()` entry point accepts an optional `extensions` parameter and forwards it to the factory:
+
+```python
+def serve(
+    registry,
+    *,
+    extensions: "ExtensionManager | None" = None,
+    schema_converter: "SchemaConverter | None" = None,
+    annotation_mapper: "AnnotationMapper | None" = None,
+    error_mapper: "ErrorMapper | None" = None,
+    ...
+) -> None: ...
+```
+
+When `extensions` is provided, the factory invokes `extensions.apply(registry, executor)` before constructing the MCP server, so the Executor it wraps already carries caller-supplied ACLs, approval handlers, module validators, discoverers, span exporters, and middleware.
+
+### Pass-Through to Executor
+If `serve()` receives a bare `Registry` (not an `Executor`), the factory builds the default `Executor(registry, strategy=strategy)` and then calls `ExtensionManager.apply(registry, executor)`. If `serve()` receives an `Executor` directly, the factory still invokes `apply()` on it; callers who have already wired extensions SHOULD pass the same `ExtensionManager` to avoid double-application. Duplicate wiring is idempotent for single-cardinality points but additive for multi-cardinality points (middleware, span exporters).
+
+### Custom Adapter Hooks
+In addition to apcore's built-in extension points, the factory exposes three MCP-specific hooks:
+
+| Hook | Replaces | Expected type |
+|------|----------|---------------|
+| `schema_converter` | Default `SchemaConverter` | `SchemaConverter` protocol |
+| `annotation_mapper` | Default `AnnotationMapper` | `AnnotationMapper` protocol |
+| `error_mapper` | Default `ErrorMapper` | `ErrorMapper` protocol |
+
+These may be supplied directly to `serve()` as keyword arguments or registered on the `ExtensionManager` under the MCP-reserved extension points `mcp_schema_converter`, `mcp_annotation_mapper`, and `mcp_error_mapper` (all single-cardinality). The Extension Bridge resolves the effective instance using the precedence: explicit kwarg > `ExtensionManager` registration > built-in default.
+
+### Load Order
+The factory applies customizations in a strict order so extensions observe a stable baseline:
+
+1. `ExtensionManager.apply(registry, executor)` wires user-supplied discoverers, validators, ACLs, approval handlers, span exporters, and user middleware onto the Executor **first** — extensions run before any built-in MCP middleware is layered on.
+2. The factory then installs its **built-in middleware** (tracing, redaction, preflight adapters) so built-ins run closest to the module boundary and cannot be shadowed by extensions.
+3. MCP-specific adapter hooks (`schema_converter`, `annotation_mapper`, `error_mapper`) are resolved and bound to the factory instance.
+4. Protocol handlers (`list_tools`, `call_tool`) are registered on the MCP Server, wrapping the now-configured Executor.
+
+This ordering guarantees that extensions can observe every tool call but cannot bypass apcore-mcp's core security and observability invariants.
 
 ## Notes
 

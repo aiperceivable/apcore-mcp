@@ -1683,6 +1683,18 @@ class RegistryListener:
 
 ---
 
+#### 6.9.1 Client Notification Bridge
+
+Translates Registry `register`/`unregister` events into MCP `notifications/tools/list_changed`. Covers FR-REG-NOTIFY-001..003.
+
+- **Emission:** Only after a successful tool-collection mutation. Failed `build_tool()` logs and returns without emitting.
+- **Debouncing:** 100ms quiet-window timer coalesces bursty events into one notification per session. Each event resets the pending timer, scheduled via `loop.call_later()` (or `call_soon_threadsafe` from Registry-callback threads).
+- **Per-session ACL filter:** Each session's ACL (same logic scoping `tools/list`) is evaluated against changed module IDs; empty-intersection sessions are suppressed.
+- **stdio (single-session):** Inline dispatch to the sole active session; no session registry.
+- **HTTP (multi-session):** Transport-owned session registry; notifications fan out with independent per-session ACL evaluation. Disconnected sessions dropped silently; per-session send errors logged without affecting others.
+
+---
+
 ### 6.10 MCPServer Background Wrapper (Python Only)
 
 **Responsibility:** Provide a non-blocking server lifecycle wrapper for embedding an MCP server inside a larger Python application. `MCPServer` wraps `serve()` in a background `threading.Thread`, exposing `start()`, `stop()`, and `wait()` methods.
@@ -2148,6 +2160,35 @@ After generating the standard `[Annotations: ...]` suffix, the mapper checks `an
 - Input: `annotations.extra = {"mcp_category": "image", "mcp_cost": "high", "internal_flag": "x"}`
 - Appended to description: `\ncategory: image\ncost: high`
 - The key `internal_flag` is ignored (no `mcp_` prefix); non-string values silently ignored.
+
+---
+
+### 6.20 Async Task Bridge (F-043)
+
+**Responsibility:** Route async-hinted module invocations to apcore's `AsyncTaskManager` and expose four reserved meta-tools so MCP clients can submit, poll, cancel, and list background tasks. F-042 is reserved for the Extension Bridge and is not covered here.
+
+**Placement:** The bridge sits in front of the Execution Router. For each incoming `tools/call`, `ExecutionRouter.handle_call()` consults `AsyncTaskBridge.is_async(descriptor)`; async-hinted modules are handed to `AsyncTaskBridge.submit()` while sync modules follow the existing `Executor.call_async()` path unchanged.
+
+**Async hint detection:** Inspects `descriptor.metadata.async` first, then `descriptor.annotations.extra["mcp_async"] == "true"`. Hint keys are configurable via `async.hint_keys`.
+
+**Reserved meta-tools:** Registered by the MCP Server Factory under the `__apcore_` prefix so they cannot collide with user modules:
+
+| Tool | Manager call |
+|------|--------------|
+| `__apcore_task_submit` | `manager.submit(module_id, arguments, context)` |
+| `__apcore_task_status` | `manager.get_status(task_id)` + conditional `get_result()` on terminal `completed` |
+| `__apcore_task_cancel` | `manager.cancel(task_id)` |
+| `__apcore_task_list` | `manager.list_tasks(status?)` |
+
+**Submission envelope:** All async dispatches return `{"task_id": str, "status": "pending"}` immediately; the `task_id` is a UUID v4 produced by `AsyncTaskManager.submit()`.
+
+**Result and error surfacing:** `__apcore_task_status` projects `TaskInfo` as JSON. Terminal `completed` tasks embed the redacted result (reusing the Execution Router's `redact_sensitive()` pass); `failed` tasks embed the error message produced by the Error Mapper from the manager-recorded exception.
+
+**Progress notifications:** When `_meta.progressToken` is present on the original `tools/call`, the bridge stores `task_id -> progressToken`, installs a progress sink on the execution context before `submit()`, and forwards each event as MCP `notifications/progress`. A final event is emitted on terminal transition.
+
+**Lifecycle and shutdown:** Terminal tasks are retained until `async.cleanup_interval_s` elapses (forwarded to `AsyncTaskManager.cleanup()`). On server shutdown, the bridge awaits `manager.shutdown()` so pending/running tasks are cancelled deterministically. Capacity-exceeded submissions raise `ASYNC_CAPACITY_EXCEEDED`; unknown ids raise `ASYNC_TASK_NOT_FOUND`; calling `__apcore_task_submit` against a non-async module raises `ASYNC_MODULE_NOT_ASYNC` — all surfaced via the Error Mapper.
+
+**SDK reference (Python):** `src/apcore_mcp/server/async_bridge.py` hosts `AsyncTaskBridge`, constructed by `MCPServerFactory` alongside the Execution Router and wired into `serve()` via an `async_manager: AsyncTaskManager | None = None` parameter (auto-created when `None`).
 
 ---
 
@@ -3489,6 +3530,65 @@ apcore-mcp/
             test_claude_desktop.py
             test_http_client.py
 ```
+
+---
+
+## F-044: Bidirectional Cancellation
+
+**Requirements:** FR-CANCEL-001..004. **Feature specs:** `docs/features/execution-router.md` (Cancellation Handling), `docs/features/transport-manager.md` (cancellation forwarding note).
+
+**Design:** The Execution Router bridges MCP `notifications/cancelled` to apcore's cooperative `CancelToken`. Per-server `Dict[call_id, CancelToken]` guarded by a lock; entries created on tool-call entry, removed in a `finally` block. Token is attached to `Context` so apcore's executor and child calls see it, and is mirrored into a `ContextVar` for propagation across `asyncio.to_thread()`.
+
+**Inbound flow:** Transport parses `notifications/cancelled` -> `ExecutionRouter.cancel(call_id, reason)` -> lookup token -> `token.cancel()` + `executor.cancel(call_id)` (apcore >= 0.19) -> emit `mcp.call.cancelled` observability event.
+
+**Race handling:** Before-start cancels use a tombstone entry that the entry handler checks (immediate `ExecutionCancelledError`). After-complete cancels are no-ops at `debug`. Duplicate cancels absorbed via idempotent `CancelToken.cancel()`.
+
+**Error mapping:** `ExecutionCancelledError` -> Error Mapper -> JSON-RPC `-32800` "Request cancelled" (MCP spec), internal code `EXECUTION_CANCELLED`. No `CallToolResult` is returned for the cancelled `requestId`.
+
+**Risks:** apcore < 0.19 lacks `executor.cancel()`; cooperative cancellation via `token.check()` remains the primary mechanism, with executor-level short-circuit as an enhancement. Modules that never call `token.check()` only unblock after the executor timeout.
+
+---
+
+## F-045: Decorator Metadata Mapping
+
+**Requirements:** FR-META-001..003. **Feature spec:** `docs/features/annotation-mapper.md` (Decorator Metadata Enrichment).
+
+**Design:** The Annotation Mapper consumes optional `ModuleDescriptor` fields populated by apcore's `@module` decorator / YAML bindings (`examples`, `tags`, `version`, `documentation_url`) and projects them into the MCP `Tool` envelope.
+
+- **Examples** -> appended to `Tool.description` after the primary text, separated by a blank line, under an `Examples:` header, as a bullet list. Cap at three bullets; remaining entries are silently dropped. Each bullet uses the example summary or a compact `input -> output` stringification.
+- **Tags** -> `keywords: list[str]` on the MCP tool, plus a derived `category` hint when a conventional namespace prefix is present.
+- **Version** -> `_meta.version` (MCP reserved `_meta` namespace).
+- **Documentation URL** -> `_meta.documentationUrl` (camelCase per MCP `_meta` conventions).
+
+Absent / `None` fields are omitted entirely. Projection is additive and does not interfere with the existing OpenAI description-suffix logic. No schema translation occurs; values pass through as-is.
+
+---
+
+## F-046: Custom Middleware Injection
+
+**Requirements:** FR-MW-INJECT-001..002. **Feature spec:** `docs/features/mcp-server-factory.md` (Custom Middleware Injection).
+
+**Design:** `serve()` gains `middlewares: list[Middleware] | None = None`. The factory forwards the list to the `ExecutionRouter`, which appends entries to the underlying apcore `Executor`'s middleware chain **after** the factory's built-ins (logging, tracing, approval enforcement, redaction). This preserves the invariant that user hooks observe redacted inputs and cannot bypass safety middleware.
+
+Validation: each entry must be an `apcore.middleware.Middleware` instance; otherwise a configuration error is raised before the MCP server binds a transport. `None`/empty list => unchanged default pipeline. When an `ExtensionManager` is also provided, extension-registered middlewares and `middlewares=` entries are additive; ordering is built-ins -> extension-registered -> `middlewares=` (registration order within each group).
+
+---
+
+## F-042: Extension Bridge
+
+**Requirements:** FR-EXTMGR-001..003. **Feature spec:** `docs/features/extension-bridge.md`. **Upstream:** `apcore/docs/features/extension-system.md`.
+
+**Design:** The Extension Bridge is a thin orchestration layer inside the MCP Server Factory that integrates apcore's `ExtensionManager` with the MCP pipeline. `serve(..., extensions: ExtensionManager | None = None, schema_converter=..., annotation_mapper=..., error_mapper=...)` forwards the manager and adapter kwargs into the factory, which delegates to the bridge before installing built-in middleware.
+
+**Wiring sequence:**
+1. If `extensions is not None`, call `extensions.apply(registry, executor)` — wires `discoverer`, `module_validator`, `acl`, `approval_handler`, `middleware` (user), and `span_exporter` onto the Executor/Registry. A sentinel (`_mcp_applied = True`) is set on the manager to detect duplicate application when callers pre-wire an `Executor`.
+2. Factory installs **built-in MCP middleware** (tracing adapter, redaction, preflight) on top of the now-user-configured Executor so built-ins sit innermost (closest to the module boundary).
+3. Bridge resolves the three MCP-specific adapter hooks in precedence order: kwarg > `ExtensionManager.get("mcp_schema_converter" | "mcp_annotation_mapper" | "mcp_error_mapper")` > built-in default. Ambiguity (kwarg + registration both present, non-equal) emits WARNING; kwarg wins. Each resolved adapter undergoes an isinstance / duck-type / trait-bound check; failure raises `TypeError` before transport binding.
+4. Factory registers MCP protocol handlers (`list_tools`, `call_tool`) wrapping the configured Executor.
+
+**Interaction with F-046:** `middlewares=` entries install after extension-registered middleware (via `middleware` extension point) so the effective order remains: built-ins (innermost) <- extension-registered <- `middlewares=` (outermost).
+
+**SDK file reference (Python):** `src/apcore_mcp/server/extension_bridge.py` hosting `ExtensionBridge.wire(factory, registry, executor, extensions, adapter_kwargs)`. TypeScript and Rust mirror the same contract.
 
 ---
 

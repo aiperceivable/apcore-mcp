@@ -85,3 +85,4 @@ The manager installs signal handlers that trigger an internal shutdown event. Th
 
 - `streamable-http` is the modern, recommended network transport, replacing the legacy `sse` transport.
 - For embedded use (e.g., within a larger FastAPI app), the manager yields an ASGI app rather than running its own Uvicorn instance.
+- **Cancellation Forwarding**: The transport parses inbound `notifications/cancelled` messages (`{"method": "notifications/cancelled", "params": {"requestId": "...", "reason": "..."}}`) on all transports (stdio, streamable-http, sse) and forwards them to `ExecutionRouter.cancel(call_id, reason)` without blocking the protocol read loop. See the Execution Router "Cancellation Handling" section for routing semantics.

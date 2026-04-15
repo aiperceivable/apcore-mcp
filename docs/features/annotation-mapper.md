@@ -60,6 +60,16 @@ For OpenAI tool descriptions, a suffix is generated only for non-default values:
 ### Approval Check
 The mapper identifies modules that require a human-in-the-loop approval step based on the `requires_approval` flag, which can then be used to trigger MCP elicitation or other confirmation flows.
 
+### Decorator Metadata Enrichment
+Beyond behavioral annotations, the mapper also projects auxiliary `ModuleDescriptor` metadata sourced from `@module` decorators / YAML bindings into the MCP `Tool` output:
+
+1. **`descriptor.examples`** — Rendered into the MCP `Tool.description` as an `Examples:` section with bullet list. The mapper emits at most three bullets (the first three examples), truncating additional entries to keep descriptions bounded. Each bullet uses the example's short-form summary (or stringified input/output pair) and is appended after the primary description text, separated by a blank line.
+2. **`descriptor.tags`** — Mirrored onto the MCP tool as `keywords` (list of strings) and, where applicable, a derived `category` hint for client-side grouping. Tags remain unmodified (no case normalization) to preserve registry semantics.
+3. **`descriptor.version`** — Emitted as `_meta.version` on the MCP `Tool` object (MCP `_meta` reserved namespace), allowing clients to surface per-tool version information independent of the server-level version.
+4. **`descriptor.documentation_url`** — Emitted as `_meta.documentationUrl` (camelCase per MCP `_meta` conventions) for clients that link out to external tool documentation.
+
+All four fields are optional: when absent or `None` on the descriptor, the mapper omits the corresponding output field entirely rather than emitting empty values. This enrichment is additive and must not conflict with existing description suffix generation used by the OpenAI adapter.
+
 ## Constraints
 
 - **Case Consistency**: Output labels in suffixes must follow a consistent, parseable naming convention.

@@ -73,6 +73,32 @@ If a schema is empty (`{}`), it is normalized to `{"type": "object", "properties
 - **Missing Definition**: Raises `KeyError` if a `$ref` points to a missing key in `$defs`.
 - **Max Depth Exceeded**: Raises `ValueError` if the 32-level recursion limit is reached.
 
+## Strict Mode for MCP
+
+The Schema Converter exposes a `strict` option that tightens the converted JSON Schema for MCP clients without breaking MCP's permissive posture.
+
+### Per-SDK Defaults
+- Python (`SchemaConverter(strict=True)`) — default `True`.
+- TypeScript (`convertInputSchema(descriptor, { strict })`) — option is optional and defaults to `false` at the converter level; the MCP Server Factory opts in with `strict: true` when building tools.
+- Rust (`SchemaConverter::convert_input_schema_strict(schema, strict)`) — strict is an explicit parameter; the default constructor path uses strict mode, and the factory invokes the strict variant.
+
+### What Strict Injects
+When enabled, strict recursively walks the schema and sets `additionalProperties: false` on every JSON Schema node that is one of:
+- `type == "object"`,
+- a `type` array containing `"object"`,
+- or a schema that declares `properties` without an explicit `type`.
+
+### What Strict Does NOT Do
+Unlike apcore's core `to_strict_schema`, the MCP-side strict mode does **not** force every property to be `required` and does **not** rewrite optional fields to be `nullable`. This preserves MCP's permissive posture (optional fields stay optional, absent fields stay absent) while still blocking unknown keys.
+
+### Preservation Rules
+User-set `additionalProperties` values (whether `true`, `false`, or a subschema) are always preserved — strict mode never overwrites an existing declaration. Injection only occurs when the key is absent.
+
+### Implementation References
+- Python: `src/apcore_mcp/adapters/schema.py` (`_inject_additional_properties_false`).
+- TypeScript: `src/adapters/schema.ts` (`ConvertSchemaOptions.strict`).
+- Rust: `src/adapters/schema.rs` (`inject_strict`).
+
 ## Notes
 
 - This component is critical for compatibility with MCP clients (like Claude Desktop) and OpenAI's API, which often struggle with unresolved JSON Schema references.

@@ -1978,6 +1978,52 @@ where each line corresponds to an error entry from `error.details["errors"]`. Ea
 
 ---
 
+#### FR-REG-NOTIFY-001: Emit list_changed on register/unregister
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-REG-NOTIFY-001 |
+| **Title** | Emit MCP list_changed on Registry register/unregister |
+| **Priority** | P1 |
+| **Traces to** | F-015 |
+
+**Description:** After the tool collection is mutated by a `register` or `unregister` event, the listener SHALL emit `notifications/tools/list_changed` to connected MCP clients. Failed sync (e.g., `build_tool()` raises) MUST NOT emit.
+
+**Expected Output:** One notification per effective state change.
+**Error Conditions:** Per-session send failure is logged and does not block other sessions.
+
+---
+
+#### FR-REG-NOTIFY-002: Debounce bulk changes within 100ms
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-REG-NOTIFY-002 |
+| **Title** | Coalesce rapid register/unregister events |
+| **Priority** | P1 |
+| **Traces to** | F-015 |
+
+**Description:** Multiple register/unregister events within a 100ms quiet window SHALL be coalesced into a single `notifications/tools/list_changed` per session.
+
+**Expected Output:** At most one notification per session per 100ms quiet window.
+
+---
+
+#### FR-REG-NOTIFY-003: Per-session ACL filter and transport fan-out
+
+| Field | Value |
+|-------|-------|
+| **ID** | FR-REG-NOTIFY-003 |
+| **Title** | Apply ACL filter; stdio single-session vs HTTP multi-session |
+| **Priority** | P1 |
+| **Traces to** | F-015 |
+
+**Description:** Notifications SHALL be filtered per session using the same ACL used for `tools/list`; if no changed tools are visible to a session, suppress. stdio transport delivers to the single active session; HTTP transport fans out to all active sessions with per-session ACL evaluation. Disconnected sessions are dropped silently.
+
+**Error Conditions:** Individual session failures logged; other sessions unaffected.
+
+---
+
 ### 3.10 FR-LOG: Logging Requirements
 
 ---
@@ -4422,6 +4468,9 @@ MCP_ELICIT_KEY: str = "_mcp_elicit"
 | FR-DYNAMIC-002 | F-015 |
 | FR-DYNAMIC-003 | F-015 |
 | FR-DYNAMIC-004 | F-015 |
+| FR-REG-NOTIFY-001 | F-015 |
+| FR-REG-NOTIFY-002 | F-015 |
+| FR-REG-NOTIFY-003 | F-015 |
 | FR-LOG-001 | F-016 |
 | FR-LOG-002 | F-016 |
 | FR-LOG-003 | F-016 |
@@ -4440,6 +4489,42 @@ MCP_ELICIT_KEY: str = "_mcp_elicit"
 | FR-EXPLORER-004 | F-026 |
 | FR-EXPLORER-005 | F-026 |
 | FR-EXPLORER-006 | F-026 |
+
+---
+
+### FR-ASYNC: Async Task Bridge
+
+The following requirements define the MCP-layer bridge onto apcore's `AsyncTaskManager`. All six trace to **F-043**.
+
+#### FR-ASYNC-001: Submit async-hinted module calls to AsyncTaskManager
+
+**Description:** When a tool-call target module's descriptor carries an async hint (`metadata.async == true` or `annotations.extra["mcp_async"] == "true"`), the Async Task Bridge shall route the call through `AsyncTaskManager.submit(module_id, inputs, context)` instead of `Executor.call_async()`, and shall return `{"task_id": str, "status": "pending"}` immediately without awaiting module completion.
+**Priority:** P1. **Traces to:** F-043.
+
+#### FR-ASYNC-002: Query task status via meta-tool
+
+**Description:** The server shall register a reserved meta-tool `__apcore_task_status` that accepts `{task_id: str}` and returns the current `TaskInfo` projection (task_id, module_id, status, submitted_at, started_at, completed_at). Unknown ids shall surface as `ASYNC_TASK_NOT_FOUND` via the Error Mapper.
+**Priority:** P1. **Traces to:** F-043.
+
+#### FR-ASYNC-003: Cancel tasks via meta-tool
+
+**Description:** The server shall register `__apcore_task_cancel` which invokes `AsyncTaskManager.cancel(task_id)` and returns `{task_id, cancelled: bool}`. Cancellation shall be cooperative via the context's `CancelToken` when available.
+**Priority:** P1. **Traces to:** F-043.
+
+#### FR-ASYNC-004: List tasks via meta-tool
+
+**Description:** The server shall register `__apcore_task_list` which accepts an optional `status` filter (`pending|running|completed|failed|cancelled`) and returns `{tasks: TaskInfo[]}` by delegating to `AsyncTaskManager.list_tasks(status)`.
+**Priority:** P2. **Traces to:** F-043.
+
+#### FR-ASYNC-005: Retrieve terminal results through status tool
+
+**Description:** When a task is in terminal state, `__apcore_task_status` shall include `result` (JSON-serialised, passed through the same redactor used by the Execution Router) for `completed` tasks and `error` (mapped via Error Mapper) for `failed` tasks. Non-terminal statuses shall omit both fields.
+**Priority:** P1. **Traces to:** F-043.
+
+#### FR-ASYNC-006: Emit progress notifications for running tasks
+
+**Description:** When the original `tools/call` request carries `_meta.progressToken`, the bridge shall emit MCP `notifications/progress` events for each progress event reported through the execution context and one final event upon terminal transition. Progress sink failures shall be logged at `warning` level and must not fail the underlying task.
+**Priority:** P2. **Traces to:** F-043.
 
 ---
 
@@ -4519,6 +4604,23 @@ CallFrequencyExceededError(module_id, count, max_repeat, call_chain)  # code="CA
 ExecutionCancelledError(module_id: str)                              # code="EXECUTION_CANCELLED"
 ```
 
+### 10.3.x Decorator Metadata & Middleware Injection
+
+**FR-META-001** — Decorator Examples Projection
+The Annotation Mapper SHALL project `ModuleDescriptor.examples` into the MCP `Tool.description` as an `Examples:` section rendered as a bullet list, emitting at most three bullets and truncating the remainder. When `examples` is absent or empty, no section is appended. (Source: F-045)
+
+**FR-META-002** — Decorator Tags Projection
+The Annotation Mapper SHALL project `ModuleDescriptor.tags` onto the MCP `Tool` as a `keywords` list (and derived `category` hint where applicable). When `tags` is `None` or empty, the fields SHALL be omitted. (Source: F-045)
+
+**FR-META-003** — Decorator Version & Documentation URL Projection
+The Annotation Mapper SHALL emit `ModuleDescriptor.version` as `_meta.version` and `ModuleDescriptor.documentation_url` as `_meta.documentationUrl` on the MCP `Tool`. Absent fields SHALL be omitted rather than emitted as empty values. (Source: F-045)
+
+**FR-MW-INJECT-001** — serve() Middleware Parameter
+The `serve()` public API SHALL accept an optional `middlewares: list[Middleware] | None = None` parameter. Entries SHALL be `apcore.middleware.Middleware` instances; invalid entries SHALL cause a configuration error before server start. (Source: F-046)
+
+**FR-MW-INJECT-002** — Middleware Ordering & Pass-Through
+User-supplied middlewares SHALL be installed on the `ExecutionRouter`/`Executor` **after** all built-in middlewares (logging, tracing, approval, redaction). When the parameter is `None` or empty, built-in behavior SHALL remain unchanged. (Source: F-046)
+
 ### 10.4 Requirement Counts Summary
 
 | Category | Count |
@@ -4546,6 +4648,49 @@ ExecutionCancelledError(module_id: str)                              # code="EXE
 | NFR-PORT | 2 |
 | **Total NFRs** | **20** |
 | **Grand Total** | **106** |
+
+---
+
+## 11. Bidirectional Cancellation Requirements
+
+These requirements formalize the integration between the MCP `notifications/cancelled` protocol message and apcore's cooperative `CancelToken` model. They are implemented by the Execution Router with support from the Transport Manager. Tech-design reference: **F-044**.
+
+### FR-CANCEL-001: Cancellation Token Lifecycle
+
+The Execution Router **MUST** allocate a fresh `CancelToken` for every inbound tool call, attach it to the `Context` via `Context.create(cancel_token=token)`, register it in a `call_id -> CancelToken` map guarded by a lock, and remove the entry in a `finally` block on completion to prevent leaks.
+
+### FR-CANCEL-002: Inbound Cancellation Handling
+
+The Transport Manager **MUST** forward `notifications/cancelled` (with `requestId` and optional `reason`) to `ExecutionRouter.cancel(call_id, reason)` on all transports (stdio, streamable-http, sse). The router **MUST** invoke `token.cancel()` and, when apcore >= 0.19 is available, also `executor.cancel(call_id)`. A `mcp.call.cancelled` observability event **MUST** be emitted with the reason.
+
+### FR-CANCEL-003: Race Case Semantics
+
+The router **MUST** handle three race cases deterministically:
+1. **Before-start** — cancel received before token registration: store a tombstone and raise `ExecutionCancelledError` immediately when the entry handler runs, without invoking the module.
+2. **After-complete** — cancel received after entry removal: no-op, logged at `debug`.
+3. **Concurrent duplicate cancels** — absorbed idempotently via the thread-safe `CancelToken.cancel()` contract.
+
+### FR-CANCEL-004: Error Mapping and Response
+
+The router **MUST** catch `ExecutionCancelledError` raised in the pipeline and forward it to the Error Mapper, which **MUST** emit JSON-RPC error `-32800` ("Request cancelled") per the MCP spec with internal code `EXECUTION_CANCELLED`. The `CallToolResult` **MUST NOT** be returned for a cancelled `requestId`. The active `CancelToken` **MUST** be propagated across `asyncio.to_thread()` and nested calls via a `ContextVar`.
+
+---
+
+## 12. Extension Manager Integration Requirements
+
+These requirements formalize how apcore-mcp consumes apcore's `ExtensionManager` (see `apcore/docs/features/extension-system.md`) via the Extension Bridge. Tech-design reference: **F-042**.
+
+### FR-EXTMGR-001: serve() Accepts ExtensionManager
+
+The `serve()` public API **MUST** accept an optional `extensions: ExtensionManager | None = None` parameter. When provided, apcore-mcp **MUST** invoke `extensions.apply(registry, executor)` exactly once during server construction, before any MCP built-in middleware is installed, so that user-registered discoverers, module validators, ACLs, approval handlers, span exporters, and middleware are wired onto the Executor and Registry. When `None`, no wiring occurs and the server uses built-in defaults only.
+
+### FR-EXTMGR-002: Adapter Hook Resolution Precedence
+
+apcore-mcp **MUST** resolve each MCP-specific adapter hook (`schema_converter`, `annotation_mapper`, `error_mapper`) using a three-tier precedence: (1) explicit `serve()` keyword argument, (2) `ExtensionManager.get("mcp_schema_converter" | "mcp_annotation_mapper" | "mcp_error_mapper")`, (3) built-in default. When tiers (1) and (2) both supply a non-null value for the same hook, tier (1) **MUST** win and a WARNING **MUST** be logged. Each resolved adapter **MUST** satisfy its protocol; a `TypeError` **MUST** be raised before any transport socket is opened.
+
+### FR-EXTMGR-003: Load Order Guarantee
+
+The Extension Bridge **MUST** enforce the load sequence: (1) `ExtensionManager.apply()`, (2) built-in MCP middleware installation, (3) adapter hook binding, (4) protocol handler registration. User middleware registered via the `middleware` extension point **MUST** be installed before built-in middleware (tracing, redaction, preflight) so that built-ins sit closest to the module boundary. When `serve()` is called with an `Executor` rather than a `Registry`, the bridge **MUST** still invoke `apply()` on it; duplicate application detected via an internal sentinel **MUST** emit a WARNING but **MUST NOT** raise.
 
 ---
 
