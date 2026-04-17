@@ -1,0 +1,144 @@
+{
+  "description": "Cross-language conformance for Config Bus `mcp.acl` loading. Each case supplies the JSON value that a bridge would receive from `Config.get(\"mcp.acl\")`; the bridge's acl_builder must build an ACL with the documented rule count + default_effect, or reject malformed input with the documented error substring.",
+  "contract_version": "1.0",
+  "test_cases": [
+    {
+      "id": "null_returns_no_acl",
+      "description": "A null value yields no ACL.",
+      "input": null,
+      "expected_acl": null
+    },
+    {
+      "id": "empty_object_returns_no_acl",
+      "description": "An empty object yields no ACL (treated as no section configured).",
+      "input": {},
+      "expected_acl": null
+    },
+    {
+      "id": "rules_only_default_deny",
+      "description": "A rules list with no explicit default_effect defaults to deny.",
+      "input": {
+        "rules": [
+          {
+            "callers": ["role:admin"],
+            "targets": ["sys.*"],
+            "effect": "allow"
+          }
+        ]
+      },
+      "expected_acl": {
+        "rule_count": 1,
+        "default_effect": "deny"
+      }
+    },
+    {
+      "id": "default_allow_no_rules",
+      "description": "default_effect='allow' with empty rules list yields an ACL with zero rules and allow default.",
+      "input": {
+        "default_effect": "allow",
+        "rules": []
+      },
+      "expected_acl": {
+        "rule_count": 0,
+        "default_effect": "allow"
+      }
+    },
+    {
+      "id": "rule_with_description_and_conditions",
+      "description": "Rules may carry description and conditions fields.",
+      "input": {
+        "default_effect": "deny",
+        "rules": [
+          {
+            "callers": ["role:admin"],
+            "targets": ["sys.*"],
+            "effect": "allow",
+            "description": "admin access",
+            "conditions": {
+              "identity_types": ["human", "system"]
+            }
+          }
+        ]
+      },
+      "expected_acl": {
+        "rule_count": 1,
+        "default_effect": "deny"
+      }
+    },
+    {
+      "id": "multiple_rules_order_preserved",
+      "description": "Multi-rule lists preserve ordering (ACL first-match-wins).",
+      "input": {
+        "default_effect": "deny",
+        "rules": [
+          { "callers": ["role:admin"], "targets": ["sys.*"], "effect": "allow" },
+          { "callers": ["*"], "targets": ["sys.reload"], "effect": "deny" },
+          { "callers": ["*"], "targets": ["public.*"], "effect": "allow" }
+        ]
+      },
+      "expected_acl": {
+        "rule_count": 3,
+        "default_effect": "deny"
+      }
+    }
+  ],
+  "error_cases": [
+    {
+      "id": "invalid_default_effect",
+      "description": "default_effect must be 'allow' or 'deny'.",
+      "input": { "default_effect": "maybe", "rules": [] },
+      "expected_error_substring": "default_effect must be"
+    },
+    {
+      "id": "missing_callers",
+      "description": "A rule missing 'callers' is rejected.",
+      "input": {
+        "rules": [{ "targets": ["x.*"], "effect": "allow" }]
+      },
+      "expected_error_substring": "'callers' must be a non-empty list"
+    },
+    {
+      "id": "missing_targets",
+      "description": "A rule missing 'targets' is rejected.",
+      "input": {
+        "rules": [{ "callers": ["*"], "effect": "allow" }]
+      },
+      "expected_error_substring": "'targets' must be a non-empty list"
+    },
+    {
+      "id": "invalid_effect",
+      "description": "A rule's effect must be 'allow' or 'deny'.",
+      "input": {
+        "rules": [{ "callers": ["*"], "targets": ["*"], "effect": "maybe" }]
+      },
+      "expected_error_substring": "'effect' must be 'allow' or 'deny'"
+    },
+    {
+      "id": "unknown_rule_key",
+      "description": "Unknown keys on a rule are rejected.",
+      "input": {
+        "rules": [
+          { "callers": ["*"], "targets": ["*"], "effect": "allow", "bogus": true }
+        ]
+      },
+      "expected_error_substring": "unexpected keys"
+    },
+    {
+      "id": "non_object_top_level",
+      "description": "The top-level `mcp.acl` value must be an object.",
+      "input": "deny",
+      "expected_error_substring": "must be a mapping"
+    },
+    {
+      "id": "rules_non_array",
+      "description": "The `rules` field must be a list.",
+      "input": { "rules": "oops" },
+      "expected_error_substring": "rules must be a list"
+    }
+  ],
+  "notes": {
+    "known_divergences": [
+      "All three SDK ACL constructors take `rules: Vec<ACLRule> | list[ACLRule] | ACLRule[]` and a `default_effect` string. Python and TypeScript store `description` as a required string (empty when omitted); Rust stores it as Option<String> (None when omitted). Conformance cases only assert rule counts and default_effect, not individual rule-field reconstructions."
+    ]
+  }
+}

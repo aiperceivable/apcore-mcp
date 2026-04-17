@@ -1,0 +1,105 @@
+{
+  "description": "Cross-language conformance for Config Bus `mcp.middleware` loading. Each case supplies a raw JSON array that a bridge would receive from `Config.get(\"mcp.middleware\")`; the bridge's middleware_builder must produce the documented middleware names and accept the documented config.",
+  "contract_version": "1.0",
+  "test_cases": [
+    {
+      "id": "empty_list_builds_no_middleware",
+      "description": "An empty list yields zero middleware instances.",
+      "input_entries": [],
+      "expected_middleware_names": []
+    },
+    {
+      "id": "retry_with_defaults",
+      "description": "A bare `retry` entry builds a RetryMiddleware with default config.",
+      "input_entries": [
+        { "type": "retry" }
+      ],
+      "expected_middleware_names": ["retry"]
+    },
+    {
+      "id": "retry_with_custom_config",
+      "description": "`retry` with custom keys is accepted and forwarded to RetryConfig.",
+      "input_entries": [
+        {
+          "type": "retry",
+          "max_retries": 5,
+          "strategy": "exponential",
+          "base_delay_ms": 100,
+          "max_delay_ms": 5000,
+          "jitter": true
+        }
+      ],
+      "expected_middleware_names": ["retry"]
+    },
+    {
+      "id": "logging_with_defaults",
+      "description": "A bare `logging` entry builds a LoggingMiddleware with log_inputs/outputs/errors all true.",
+      "input_entries": [
+        { "type": "logging" }
+      ],
+      "expected_middleware_names": ["logging"]
+    },
+    {
+      "id": "error_history_with_both_limits",
+      "description": "`error_history` accepts max_entries_per_module and max_total_entries shorthand keys.",
+      "input_entries": [
+        {
+          "type": "error_history",
+          "max_entries_per_module": 25,
+          "max_total_entries": 500
+        }
+      ],
+      "expected_middleware_names": ["error_history"]
+    },
+    {
+      "id": "multiple_entries_preserve_order",
+      "description": "Ordering of the input list is preserved in the output list.",
+      "input_entries": [
+        { "type": "retry" },
+        { "type": "logging" },
+        {
+          "type": "error_history",
+          "max_entries_per_module": 50
+        }
+      ],
+      "expected_middleware_names": ["retry", "logging", "error_history"]
+    }
+  ],
+  "error_cases": [
+    {
+      "id": "unknown_type_is_rejected",
+      "description": "Unknown `type` value raises a config error.",
+      "input_entries": [{ "type": "bogus" }],
+      "expected_error_substring": "unknown type"
+    },
+    {
+      "id": "missing_type_is_rejected",
+      "description": "Entry without a `type` key raises a config error.",
+      "input_entries": [{ "max_retries": 3 }],
+      "expected_error_substring": "missing required 'type'"
+    },
+    {
+      "id": "non_object_entry_is_rejected",
+      "description": "A non-object entry (e.g. a string) raises a config error.",
+      "input_entries": ["retry"],
+      "expected_error_substring": "must be an object"
+    },
+    {
+      "id": "error_history_rejects_unknown_keys",
+      "description": "Keys other than max_entries_per_module / max_total_entries are rejected.",
+      "input_entries": [
+        {
+          "type": "error_history",
+          "bogus_key": true
+        }
+      ],
+      "expected_error_substring": "unexpected keys"
+    }
+  ],
+  "notes": {
+    "known_divergences": [
+      "apcore-rust's ErrorHistory has a lossy shorthand: with only max_entries_per_module set, max_total_entries defaults to max_entries_per_module * 100. Python and TypeScript derive their own defaults (50 and 1000). Conformance cases only assert middleware names, not internal limit values.",
+      "apcore-rust's RetryMiddleware and ErrorHistoryMiddleware report different debug names than Python/TypeScript; all three SDKs agree on the public `name()` string which is asserted here."
+    ]
+  }
+}
