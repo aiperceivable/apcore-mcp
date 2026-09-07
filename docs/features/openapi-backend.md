@@ -380,6 +380,14 @@ mcp:
 | `headers` | `{}` | Spec fetch only. **Not** forwarded to proxied calls — see below |
 | `acknowledge_unapproved_writes` | `false` | Records an explicit operator decision to run write-method operations with no approval path, suppressing the startup warning. The only thing that suppresses it besides having nothing to warn about |
 
+`timeout` bounds the startup spec fetch and nothing else. **Proxied calls are not configurable
+through `mcp.openapi`**: they take apcore-toolkit's own `HTTPProxyRegistryWriter` default of 60
+seconds in all three SDKs. Python and TypeScript get that by omitting the argument; Rust states it
+explicitly, because `HTTPProxyRegistryWriter::new` there takes the timeout positionally, has no
+default, and rejects a non-positive value. Reading `timeout` as the proxy budget instead was
+[apcore-mcp-rust#9](https://github.com/aiperceivable/apcore-mcp-rust/issues/9), and reading it as
+milliseconds was [apcore-mcp-typescript#10](https://github.com/aiperceivable/apcore-mcp-typescript/issues/10).
+
 ### CLI
 
 | Argument | Default | Description |

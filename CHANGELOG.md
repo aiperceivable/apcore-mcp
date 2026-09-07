@@ -6,6 +6,52 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.21.0] - 2026-09-07
+
+> **Shipped in all three bridges.** Implemented in `apcore-mcp-python` 0.21.0,
+> `apcore-mcp-typescript` 0.21.0 and `apcore-mcp-rust` 0.21.0. See each bridge's own CHANGELOG for
+> its per-language details.
+
+Contract clarification release. No fixture changed and `contract_version` stays at `1.0` — the
+conformance corpus already specified everything it covers correctly. What changed is that one rule
+the corpus does *not* cover was never written down, and two bridges had each guessed differently.
+
+### Changed
+
+- **`docs/features/openapi-backend.md`: the proxy request timeout is now specified as fixed and
+  unconfigurable.** `timeout` was already documented as "Spec fetch only; not the per-call proxy
+  timeout", but the doc never said what the proxy timeout *is*, leaving the other half of the
+  contract unstated. It is apcore-toolkit's `HTTPProxyRegistryWriter` default of 60 seconds in all
+  three SDKs; Python and TypeScript reach it by omitting the argument, Rust states it explicitly
+  because `HTTPProxyRegistryWriter::new` there takes the timeout positionally, has no default, and
+  rejects a non-positive value.
+
+  This is a genuine contract addition for Rust, whose proxy timeout was configurable — via
+  `mcp.openapi.timeout`, the key documented for the spec fetch — until
+  [apcore-mcp-rust#9](https://github.com/aiperceivable/apcore-mcp-rust/issues/9) was fixed. The
+  three bridges agree on this behaviour for the first time as of 0.21.0.
+
+  Related bridge-side fixes, none of which required a fixture or contract change:
+  [apcore-mcp-rust#8](https://github.com/aiperceivable/apcore-mcp-rust/issues/8) (`--openapi-header`
+  built a header map and never passed it),
+  [apcore-mcp-rust#9](https://github.com/aiperceivable/apcore-mcp-rust/issues/9) (`timeout`
+  configured the proxy instead of the fetch),
+  [apcore-mcp-typescript#10](https://github.com/aiperceivable/apcore-mcp-typescript/issues/10)
+  (`timeout` passed as seconds into a milliseconds parameter) and
+  [#19](https://github.com/aiperceivable/apcore-mcp/issues/19) (`Config.project_root` never read on
+  the Config Bus or CLI routes, in both TypeScript and Rust).
+
+### Known gap
+
+- `config_cases` in `conformance/fixtures/openapi_backend.json` call `resolve_spec_location`
+  directly with an explicit `project_root`, so they exercise the resolution helper and never the
+  wiring that supplies its argument — which is exactly how #19 survived in two bridges. Each bridge
+  now pins its own wiring locally (`tests/openapi_backend_option_plumbing.rs`,
+  `tests/openapi-backend-wiring.test.ts`, `tests/test_openapi_option_plumbing.py`), but a
+  conformance case entering through the **config** route, with a `cwd` differing from
+  `project_root`, would close this across all three at once. Not attempted here: it needs a new
+  case shape and a matching runner in each bridge.
+
 ## [0.20.0] - 2026-09-06
 
 > **Shipped in all three bridges.** Unlike 0.18.0 and 0.19.0, this release is not contract-only:
