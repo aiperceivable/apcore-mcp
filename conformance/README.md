@@ -19,6 +19,7 @@ Fixtures live in `fixtures/`. Nothing else in this directory is normative.
 | `system_surface.json` | `tools/list`, `resources/list`, `resources/templates/list` | 9 modules (3 tools + 3 resources + 3 templates), plus 6 `not_tools` negatives | Each canonical `system.*` module's exact MCP primitive and its name or URI, including the RFC 6570 `{?period}` suffix on `system.usage.module`. **Not case-shaped** — it is a declarative surface description with `tools` / `not_tools` / `resources` / `resource_templates` / `extension` keys rather than `test_cases`. Added in 0.19.0. |
 | `middleware_config.json` | Config Bus `mcp.middleware` loading | 6 + 4 error | How a raw `mcp.middleware` array becomes a middleware chain — supported types, per-type defaults, and order preservation. |
 | `openapi_backend.json` | `openapi_backend(spec, …)` | 9 + 3 config + 4 error | A scanner-derived module ID's projection into apcore's legal alphabet and onto the MCP tool name and OpenAI function name; HTTP-method → `ToolAnnotations`; the path-typed handling of `spec` (URL verbatim, relative resolved against `project_root`, empty discarded); and the four fatal configurations. See [`features/openapi-backend.md`](../docs/features/openapi-backend.md#conformance). |
+| `schema_converter.json` | `SchemaConverter.convert_input_schema(descriptor, strict=false)` | 8 + 1 error | `$ref` sibling-key preservation during inlining — a sibling written beside `$ref` (e.g. `x-sensitive`) MUST survive resolution and wins on key conflict, merged at every depth and across chained refs. A missing `$defs` entry still raises. Added 0.22.0 after apcore 0.31.0 (D-98/D-124) and apcore-toolkit 0.12.0 fixed the identical defect in their own resolvers. See [`features/schema-converter.md`](../docs/features/schema-converter.md#ref-sibling-keys-are-preserved). |
 
 ### Driven by all three bridges
 
@@ -107,5 +108,5 @@ whether a missing directory is a skip (local dev) or a failure (CI):
 Rust's conformance assertions are inline `#[cfg(test)]` tests inside `src/`, not files under
 `tests/` — a coverage audit that only looks at `tests/` will wrongly conclude Rust skips a fixture.
 
-If you are implementing a fourth bridge, these five fixtures plus
+If you are implementing a fourth bridge, these eight fixtures plus
 [`docs/examples-spec.md`](../docs/examples-spec.md) are the compliance surface to target.

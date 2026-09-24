@@ -1,0 +1,222 @@
+{
+  "description": "SchemaConverter $ref inlining: sibling keys written beside a `$ref` node MUST survive resolution, with the sibling winning over the resolved `$defs` entry on key conflict. Exercises the converter's ref-resolution step in isolation, called with strict=false so additionalProperties injection (a separate, already-pinned concern) does not add noise to the expected output. Added because apcore 0.31.0 (decision D-124/D-98) and apcore-toolkit 0.12.0 fixed the identical defect in their own `$ref` resolvers — this bridge's schema.py/.rs/.ts `_inline_refs`/`inline_refs`/`_inlineRefs` is an independent implementation that had the same bug: `{\"$ref\": \"#/$defs/X\", \"x-sensitive\": true}` discarded `x-sensitive` entirely, which is a credential-disclosure path because the router's output redaction (see output_redaction.json) reads `x-sensitive` off the RESOLVED schema to decide what to mask.",
+  "entry_point": "SchemaConverter.convert_input_schema(descriptor, strict=false) — exercises the private ref-resolution step (Python: SchemaConverter._inline_refs; TypeScript: SchemaConverter._inlineRefs; Rust: SchemaConverter::inline_refs) via the public strict=false path so drivers do not need private-method access.",
+  "spec": "docs/features/schema-converter.md#ref-sibling-keys-are-preserved",
+  "test_cases": [
+    {
+      "id": "schema_converter_001_plain_ref_no_siblings",
+      "description": "The pre-fix behaviour is unchanged when a $ref has no siblings. Regression guard: the merge must not perturb the ordinary case.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "amount": { "$ref": "#/$defs/Amount" }
+        },
+        "$defs": {
+          "Amount": { "type": "number", "minimum": 0 }
+        }
+      },
+      "expected_inlined_schema": {
+        "type": "object",
+        "properties": {
+          "amount": { "type": "number", "minimum": 0 }
+        }
+      }
+    },
+    {
+      "id": "schema_converter_002_no_ref_at_all",
+      "description": "A schema with no $ref anywhere is returned structurally unchanged.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "note": { "type": "string", "x-sensitive": true, "description": "d" }
+        }
+      },
+      "expected_inlined_schema": {
+        "type": "object",
+        "properties": {
+          "note": { "type": "string", "x-sensitive": true, "description": "d" }
+        }
+      }
+    },
+    {
+      "id": "schema_converter_003_sibling_x_sensitive_preserved",
+      "description": "THE SECURITY CASE. `x-sensitive` written beside a $ref survives resolution. The router's output redaction reads x-sensitive off the resolved output_schema; dropping it here means a sensitive field behind a $ref reaches the redactor with nothing to mask on and is returned in plaintext. Mirrors apcore-toolkit 0.12.0's ref_resolution.json#ref_resolution_003 and apcore 0.31.0's D-98.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "$ref": "#/$defs/SecretString",
+            "x-sensitive": true
+          }
+        },
+        "$defs": {
+          "SecretString": { "type": "string", "minLength": 1 }
+        }
+      },
+      "expected_inlined_schema": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 1,
+            "x-sensitive": true
+          }
+        }
+      }
+    },
+    {
+      "id": "schema_converter_004_sibling_description_preserved",
+      "description": "The merge is NOT limited to `x-` extension keys. Restricting it to the one symptom that was noticed would leave `description`, `title` and `deprecated` silently dropped.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "$ref": "#/$defs/Note",
+            "description": "caller-supplied wording",
+            "deprecated": true
+          }
+        },
+        "$defs": {
+          "Note": { "type": "string" }
+        }
+      },
+      "expected_inlined_schema": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "type": "string",
+            "description": "caller-supplied wording",
+            "deprecated": true
+          }
+        }
+      }
+    },
+    {
+      "id": "schema_converter_005_sibling_wins_on_conflict",
+      "description": "On a key present in both, the SIBLING wins — it is the more specific, author-written value. The $defs entry is the default; the sibling is the override.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "$ref": "#/$defs/Note",
+            "description": "local"
+          }
+        },
+        "$defs": {
+          "Note": { "type": "string", "description": "shared" }
+        }
+      },
+      "expected_inlined_schema": {
+        "type": "object",
+        "properties": {
+          "note": { "type": "string", "description": "local" }
+        }
+      }
+    },
+    {
+      "id": "schema_converter_006_sibling_is_itself_resolved",
+      "description": "A sibling carrying its own nested $ref is walked like any other subtree — the merge does not smuggle unresolved references past the resolver.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "container": {
+            "$ref": "#/$defs/Base",
+            "properties": {
+              "extra": { "$ref": "#/$defs/Extra" }
+            }
+          }
+        },
+        "$defs": {
+          "Base": { "type": "object" },
+          "Extra": { "type": "integer" }
+        }
+      },
+      "expected_inlined_schema": {
+        "type": "object",
+        "properties": {
+          "container": {
+            "type": "object",
+            "properties": {
+              "extra": { "type": "integer" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "schema_converter_007_sibling_inside_nested_properties",
+      "description": "The rule applies at every depth, not only at the schema root — this is the shape a real tool input actually produces, where the marked field is a nested property.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "credentials": {
+            "type": "object",
+            "properties": {
+              "secret": {
+                "$ref": "#/$defs/Token",
+                "x-sensitive": true
+              },
+              "plain": { "type": "string" }
+            }
+          }
+        },
+        "$defs": {
+          "Token": { "type": "string" }
+        }
+      },
+      "expected_inlined_schema": {
+        "type": "object",
+        "properties": {
+          "credentials": {
+            "type": "object",
+            "properties": {
+              "secret": { "type": "string", "x-sensitive": true },
+              "plain": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "schema_converter_008_chained_ref_carries_siblings_from_each_hop",
+      "description": "When a $ref resolves to another $ref, siblings contributed at each hop all survive, with the outermost winning on conflict — the same precedence as a single hop, applied transitively.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/Outer",
+            "x-sensitive": true
+          }
+        },
+        "$defs": {
+          "Outer": { "$ref": "#/$defs/Inner", "title": "from outer" },
+          "Inner": { "type": "string", "title": "from inner" }
+        }
+      },
+      "expected_inlined_schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "from outer",
+            "x-sensitive": true
+          }
+        }
+      }
+    }
+  ],
+  "error_cases": [
+    {
+      "id": "schema_converter_missing_definition_still_errors",
+      "description": "This fix changes what happens to siblings on a RESOLVED $ref only. A $ref pointing at a name absent from $defs must keep raising, unchanged — sibling merging is not a substitute for a real definition.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "x": { "$ref": "#/$defs/DoesNotExist", "x-sensitive": true }
+        },
+        "$defs": {}
+      },
+      "expected_error_substring": "DoesNotExist"
+    }
+  ]
+}

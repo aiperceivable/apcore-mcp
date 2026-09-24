@@ -6,6 +6,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.22.0] - 2026-09-24
+
+> **Shipped in all three bridges.** Implemented in `apcore-mcp-python`, `apcore-mcp-typescript` and
+> `apcore-mcp-rust`. See each bridge's own CHANGELOG for its per-language details.
+
+Raises the required floor to apcore 0.31.0 and apcore-toolkit 0.12.0 across all three bridges, and
+fixes a credential-disclosure defect found while reviewing what those two releases changed.
+
+### Security
+
+- **`$ref` sibling keys were discarded during `SchemaConverter` inlining, dropping `x-sensitive`**
+  ([`schema_converter.json`](conformance/fixtures/schema_converter.json), new fixture, 8 cases + 1
+  error case). A node like `{"$ref": "#/$defs/Token", "x-sensitive": true}` resolved to the
+  referenced definition **alone**, silently losing every key written beside the `$ref`. This is a
+  credential-disclosure path, not a fidelity nicety: the `ExecutionRouter`'s output redaction reads
+  `x-sensitive` off the *resolved* schema to decide what to mask (see `output_redaction.json`), so a
+  field marked sensitive behind a `$ref` reached the redactor with nothing to redact on and was
+  returned in plaintext. `$ref` resolution is **now specified to shallow-merge sibling keys over the
+  resolved target, sibling winning on conflict, at every depth and across chained refs** — see
+  [`docs/features/schema-converter.md#ref-sibling-keys-are-preserved`](docs/features/schema-converter.md#ref-sibling-keys-are-preserved).
+  A missing `$defs` entry still raises; this only changes what happens to siblings on a reference
+  that *does* resolve.
+
+  Found by reviewing what apcore 0.31.0 (decision D-98/D-124) and apcore-toolkit 0.12.0 changed:
+  both fixed the identical defect in their own `$ref` resolvers. `SchemaConverter`'s
+  `_inline_refs`/`inline_refs`/`_inlineRefs` is an independent implementation with no shared code
+  path to either, so it was not fixed by bumping the dependency floor and carried the same latent
+  bug in all three bridges.
+
+### Changed — dependency floor
+
+- **Required apcore floor raised to 0.31.0** and **required apcore-toolkit floor raised to 0.12.0**
+  across all three bridges. apcore 0.31.0 is two joined audit cycles (`PROTOCOL_SPEC` v1.37.0 →
+  v1.59.0) settling 54 cross-language divergences, five of them security defects, none on a surface
+  this project uses (ACL/ApprovalRequest/CancelToken/Context construction/Registry/Module — grepped
+  per-bridge against every symbol apcore 0.31.0 changed). apcore-toolkit 0.12.0 adds the Device
+  Authorization Flow (unused here) and `BindingLoader.load`'s `pattern` parameter (`BindingLoader` is
+  not used by this project); its own required-apcore-floor bump to 0.31.0 is inherited transitively.
+  See each bridge's CHANGELOG for its own no-code-change confirmation.
+
 ## [0.21.0] - 2026-09-07
 
 > **Shipped in all three bridges.** Implemented in `apcore-mcp-python` 0.21.0,

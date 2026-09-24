@@ -57,7 +57,18 @@ graph LR
 ## Key Behaviors
 
 ### $ref Inlining Algorithm
-The converter walks the schema tree recursively. When it encounters a `{"$ref": "#/$defs/Name"}` node, it looks up "Name" in the schema's `$defs` section, deep-copies the definition, recursively resolves any nested refs within that copy, and replaces the `$ref` node with the resolved result.
+The converter walks the schema tree recursively. When it encounters a `{"$ref": "#/$defs/Name", ...}` node, it looks up "Name" in the schema's `$defs` section, deep-copies the definition, recursively resolves any nested refs within that copy, then **shallow-merges the node's sibling keys (every key beside `$ref`) over the resolved result, sibling winning on conflict**, and replaces the `$ref` node with the merged result.
+
+### $ref Sibling Keys Are Preserved
+A key written beside `$ref` (e.g. `{"$ref": "#/$defs/Token", "x-sensitive": true}`) MUST survive resolution — it is not discarded when the `$ref` branch is taken. This is a security requirement, not a fidelity nicety: the router's output redaction (see `output_redaction.json`) reads `x-sensitive` off the *resolved* output schema to decide what to mask, so a field marked sensitive behind a `$ref` would otherwise reach the redactor with nothing to redact on and leak in plaintext. The rule:
+
+- Resolve the `$ref` target, recursively inlining any refs within it.
+- Merge the node's own sibling keys **over** the resolved target (shallow merge at that node; siblings that are themselves subschemas are independently walked for nested `$ref`s).
+- On a key present in both, the **sibling wins** — it is the caller's explicit, more specific value; the `$defs` entry is the default.
+- A chained `$ref` (one `$defs` entry pointing at another) carries siblings contributed at each hop, with the outermost sibling winning on conflict.
+- This does **not** change error behavior: a `$ref` naming a definition absent from `$defs` still raises (`KeyError` / `Definition not found`); sibling merging only applies once a reference resolves.
+
+This mirrors the identical fix landed in apcore 0.31.0 (decision D-98/D-124) and apcore-toolkit 0.12.0's `deep_resolve_refs` — this converter is an independent implementation with no shared code path, so it carried the same latent defect and needed the same fix applied separately. Conformance: [`schema_converter.json`](../../conformance/fixtures/schema_converter.json).
 
 ### Root Object Guarantee
 If a schema is empty (`{}`), it is normalized to `{"type": "object", "properties": {}}`. If it lacks a `type` but has `properties`, `type: object` is added.
@@ -122,6 +133,7 @@ User-set `additionalProperties` values (whether `true`, `false`, or a subschema)
 
 ### Returns
 - On success: dict[str, Any] — self-contained, inlined JSON Schema; all `$ref` nodes replaced; `$defs` removed from output; root always has `type: "object"`
+- A key written beside `$ref` survives resolution, merged over the resolved definition, sibling winning on conflict — see [$ref Sibling Keys Are Preserved](#ref-sibling-keys-are-preserved)
 - Empty schema `{}` → `{"type": "object", "properties": {}, "additionalProperties": false}` (when strict=True)
 - Schema with properties but no type → `type: "object"` added
 - Deep copy of source — never mutates the original descriptor
