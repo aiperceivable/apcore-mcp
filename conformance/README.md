@@ -18,7 +18,7 @@ Fixtures live in `fixtures/`. Nothing else in this directory is normative.
 | `acl_config.json` | Config Bus `mcp.acl` loading | 11 + 21 error | How a raw `mcp.acl` JSON value becomes an ACL — null/empty means no ACL, `default_effect`, rule ordering, the `approval` key's closed value set, and PROTOCOL_SPEC §6.2.1's closed pattern-array shape with its normative validation order (`contract_version` 1.2). |
 | `system_surface.json` | `tools/list`, `resources/list`, `resources/templates/list` | 9 modules (3 tools + 3 resources + 3 templates), plus 6 `not_tools` negatives | Each canonical `system.*` module's exact MCP primitive and its name or URI, including the RFC 6570 `{?period}` suffix on `system.usage.module`. **Not case-shaped** — it is a declarative surface description with `tools` / `not_tools` / `resources` / `resource_templates` / `extension` keys rather than `test_cases`. Added in 0.19.0. |
 | `middleware_config.json` | Config Bus `mcp.middleware` loading | 6 + 4 error | How a raw `mcp.middleware` array becomes a middleware chain — supported types, per-type defaults, and order preservation. |
-| `openapi_backend.json` | `openapi_backend(spec, …)` | 9 + 3 config + 4 error | A scanner-derived module ID's projection into apcore's legal alphabet and onto the MCP tool name and OpenAI function name; HTTP-method → `ToolAnnotations`; the path-typed handling of `spec` (URL verbatim, relative resolved against `project_root`, empty discarded); and the four fatal configurations. See [`features/openapi-backend.md`](../docs/features/openapi-backend.md#conformance). |
+| `openapi_backend.json` | `openapi_backend(spec, …)` | 9 + 3 config + 4 error | That the module IDs apcore-toolkit's scanner emits (in apcore's alphabet since toolkit 0.13.0) are registered as emitted and reach the MCP tool name and OpenAI function name unchanged, and that an ID the registry would still refuse is skipped with a WARNING before the writer; HTTP-method → `ToolAnnotations`; the path-typed handling of `spec` (URL verbatim, relative resolved against `project_root`, empty discarded); and the four fatal configurations (`contract_version` 2.0). See [`features/openapi-backend.md`](../docs/features/openapi-backend.md#conformance). |
 | `schema_converter.json` | `SchemaConverter.convert_input_schema(descriptor, strict=false)` | 8 + 1 error | `$ref` sibling-key preservation during inlining — a sibling written beside `$ref` (e.g. `x-sensitive`) MUST survive resolution and wins on key conflict, merged at every depth and across chained refs. A missing `$defs` entry still raises. Added 0.22.0 after apcore 0.31.0 (D-98/D-124) and apcore-toolkit 0.12.0 fixed the identical defect in their own resolvers. See [`features/schema-converter.md`](../docs/features/schema-converter.md#ref-sibling-keys-are-preserved). |
 
 ### Driven by all three bridges
@@ -26,7 +26,8 @@ Fixtures live in `fixtures/`. Nothing else in this directory is normative.
 `acl_config.json` at `contract_version` 1.2 and `openapi_backend.json` are driven by
 `apcore-mcp-python`, `apcore-mcp-typescript` and `apcore-mcp-rust` as of each bridge's 0.20.0.
 Their expectations were computed by running the real upstreams — apcore 0.29.0's `ACLRule` errors
-and apcore-toolkit 0.11.1's scanner — rather than transcribed from prose.
+and, for `openapi_backend.json` at `contract_version` 2.0, apcore-toolkit 0.13.0's scanner (1.0 used
+0.11.1's) — rather than transcribed from prose.
 
 `openapi_backend.json` uses three sections rather than the usual two: `test_cases` (document →
 modules), `config_cases` (how the `spec` value resolves), `error_cases` (fatal configurations).

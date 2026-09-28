@@ -3300,7 +3300,7 @@ dependencies = [
 # TypeScript and Rust declare it as a hard dependency instead -- an intentional
 # per-language difference, not drift.
 markdown = [
-    "apcore-toolkit>=0.11.1",
+    "apcore-toolkit>=0.13.0",
 ]
 
 # The OpenAPI Backend (F-054). `[http-proxy]` resolves httpx, which both
@@ -3310,7 +3310,7 @@ markdown = [
 # entry point raises an actionable "install 'apcore-mcp[openapi]'" message
 # rather than letting an ImportError traceback escape.
 openapi = [
-    "apcore-toolkit[http-proxy]>=0.11.1",
+    "apcore-toolkit[http-proxy]>=0.13.0",
 ]
 
 dev = [

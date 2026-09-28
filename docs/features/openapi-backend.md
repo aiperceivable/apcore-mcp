@@ -8,6 +8,8 @@ description: "OpenAPI Backend feature spec: a third apcore-mcp backend source th
 > Source: apcore-toolkit 0.11.0 OpenAPI Scanner (`docs/features/openapi-scanner.md` § Phase 3 —
 > Consumers), extended to apcore-mcp.
 > Created: 2026-09-05
+> Revised: 2026-09-28 — apcore-toolkit 0.13.0 emits module IDs in apcore's Canonical ID alphabet;
+> the bridge's own module-ID projection is removed and its skip policy moves to the IDs `scan` returns.
 
 ## Purpose
 
@@ -48,7 +50,9 @@ load_spec(url|path) → OpenAPIScanner.scan() → HTTPProxyRegistryWriter.write(
   `module_id` derivation algorithm, and the `metadata` execution contract (`http_method` /
   `url_path`) are specified in
   [`apcore-toolkit/docs/features/openapi-scanner.md`](https://github.com/aiperceivable/apcore-toolkit/blob/main/docs/features/openapi-scanner.md)
-  and pinned by that repository's 24-case conformance corpus. This spec does not restate them.
+  and pinned by that repository's 33-case conformance corpus (`openapi_scan.json` 2.0.0) — as is,
+  since apcore-toolkit 0.13.0, the normalisation of every emitted `module_id` into apcore's
+  Canonical ID alphabet. This spec does not restate them.
 - Swagger 2.0. `OpenAPIScanner.scan` refuses anything that is not `3.0.x` / `3.1.x`.
 - Obtaining credentials for the upstream API. The writer's `auth_header_factory` hook is where a
   token arrives; producing one is the deployment's problem (apcore-toolkit's `device-auth.md` is a
@@ -57,12 +61,12 @@ load_spec(url|path) → OpenAPIScanner.scan() → HTTPProxyRegistryWriter.write(
 
 ## Core Responsibilities
 
-1. **Compose, do not reimplement — with one named exception.** The entry point calls `load_spec`
-   (or accepts an already-parsed document), `OpenAPIScanner.scan`, and
-   `HTTPProxyRegistryWriter.write`, in that order, and returns the registry. Any behaviour
-   difference between the three bridges that is not a difference in the toolkit is a defect. The
-   exception is the [module-ID projection](#module_id-tool-name), which the bridge owns because
-   the scanner's output alphabet is wider than apcore's registry accepts.
+1. **Compose, do not reimplement.** The entry point calls `load_spec` (or accepts an
+   already-parsed document), `OpenAPIScanner.scan`, and `HTTPProxyRegistryWriter.write`, in that
+   order, and returns the registry. Any behaviour difference between the three bridges that is not a
+   difference in the toolkit is a defect. The bridge registers the module IDs the scanner emits as
+   they are; the one policy it adds is to [skip a module whose emitted ID apcore's registry would
+   still refuse](#module_id-tool-name), with a WARNING, rather than hand it to the writer.
 2. **Surface what the scan found.** Every `ScannedModule.warnings` entry and every failed
    `WriteResult` MUST reach the operator at startup — WARNING for a scan warning, ERROR for a write
    failure — naming the module ID. A spec with an unresolvable `$ref` produces a tool with an empty
@@ -96,69 +100,82 @@ load_spec(url|path) → OpenAPIScanner.scan() → HTTPProxyRegistryWriter.write(
 
 ## `module_id` → tool name
 
-`derive_module_id(path, method, operation)` is byte-identical across the three toolkits and is the
-only thing that decides a tool's name:
+The scanner decides a tool's name. Since **apcore-toolkit 0.13.0**, `OpenAPIScanner` emits every
+`module_id` in apcore's Canonical ID alphabet — `^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$`, the pattern
+apcore's registry enforces at `Registry.register` and again at `Executor.call` — byte-identically
+across the three toolkits:
 
-1. a non-empty `operationId`, sanitized — every character outside `[A-Za-z0-9_.-]` becomes `_`,
-   runs of `.` collapse to one, leading/trailing `.` and `_` are stripped;
-2. otherwise the path segments (brace-stripped) joined with `.`, plus the method, lowercased and
-   sanitized the same way — `/users/{user_id}` + `get` → `users.user_id.get`;
-3. otherwise `root.<method>` for an empty path.
+1. a non-empty `operationId`, converted to snake_case: camelCase is split into words
+   (`listPets` → `list_pets`, `getHTTPResponse` → `get_http_response`), every character outside
+   `[A-Za-z0-9_.]` becomes `_` (`list-pets` → `list_pets`), and the result is lowercased;
+2. otherwise the path segments (brace-stripped), each normalised the same way, joined with `.`,
+   plus the lowercased method — `/users/{user_id}` + `get` → `users.user_id.get`,
+   `/pets/{petId}` + `get` → `pets.pet_id.get`;
+3. otherwise `root.<method>`.
 
-…and that output is **not a legal apcore module ID**.
+An ID that is already legal is never rewritten — FastAPI's generated
+`read_item_items__item_id__get` is used as it is. The scanner normalises the **final** ID, after
+`base_path_prefix` and the `derive_module_id` / `transform_module` hooks, so a `PetStore` prefix
+becomes `pet_store.…` and a hook returning `MyThing` yields `my_thing`. It also normalises before its
+own `deduplicate_ids`, so a collision normalisation creates (`listPets` and `list-pets` both become
+`list_pets`) is resolved by the usual `_2` suffix and rename warning. The algorithm, its pinned
+regexes and its conformance corpus belong to apcore-toolkit —
+[`openapi-scanner.md` § `module_id` Derivation](https://github.com/aiperceivable/apcore-toolkit/blob/main/docs/features/openapi-scanner.md#module_id-derivation)
+— and this spec does not restate them.
 
-!!! danger "The scanner's alphabet is wider than apcore's, and the canonical Petstore is in the gap"
-    `derive_module_id` sanitizes to `[A-Za-z0-9_.-]`. apcore's registry accepts only
-    `^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$` — *"lowercase, digits, underscores, dots only; no
-    hyphens"* — and enforces it at `Registry.register` **and** again at `Executor.call`.
+**The bridge registers the scanner's IDs as emitted.** It applies no projection of its own and
+installs no hook of its own; the caller's `transform_operation` / `transform_module` /
+`derive_module_id` are forwarded verbatim.
 
-    Measured against apcore 0.30.0 and apcore-toolkit 0.11.1: of nine realistic operation shapes,
-    **only two register without repair.** The canonical Swagger Petstore — `listPets`,
-    `createPets`, `showPetById` — is entirely in the rejected set. Run end-to-end, its operations
-    scan cleanly and then fail registration as per-module `WriteResult`s, leaving an **empty
-    registry**. Under this spec's own "log at ERROR and keep going" rule that is a server which
-    starts successfully, advertises nothing, and reports one ERROR line per operation.
+!!! note "Why the bridge used to project IDs, and why it no longer does"
+    Before apcore-toolkit 0.13.0 the scanner used `operationId` verbatim and sanitised it to
+    `[A-Za-z0-9_.-]` — an alphabet no apcore registry accepts. Measured against apcore 0.30.0 and
+    apcore-toolkit 0.11.1, the canonical Swagger Petstore (`listPets`, `createPets`, `showPetById`)
+    scanned cleanly and registered **nothing**. apcore-mcp 0.20.0 through 0.22.x compensated with a
+    projection of its own — lowercase, then `-` → `_`, run inside `transform_module` — and reported
+    the gap upstream. apcore-toolkit 0.13.0 closed it with a different rule: it splits camelCase
+    into words where the projection only lowercased (`list_pets`, not `listpets`). Once the
+    toolkit's output was already in the alphabet the projection was redundant, and it disagreed
+    with the toolkit on every camelCase name, so it was removed and the IDs it produced changed —
+    see the migration note in the CHANGELOG's Unreleased section. `project_module_id` /
+    `projectModuleId` remain exported, deprecated and unchanged, for callers that imported them;
+    nothing in the bridge calls them.
 
-    This is an upstream contract gap as much as a bridge concern: `OpenAPIScanner` and
-    `HTTPProxyRegistryWriter` are documented as an end-to-end pair, and the pair cannot serve the
-    reference specification the scanner was verified against — that verification asserted
-    byte-identical `ScannedModule` output across SDKs, which never exercised registrability. **It
-    should be reported to apcore-toolkit**, where the repair belongs long-term. It lives here now
-    because the bridge cannot ship a backend that serves nothing, and because moving it upstream is
-    a breaking change to a byte-identical corpus one release old.
+**What normalisation will not repair is skipped, loudly.** Two illegal shapes survive
+normalisation: a segment that begins with a digit (`/v1/2fa` → `v1.2fa.post`, or
+`operationId: 3ds`) and an empty ID, which only a hook can produce. Repairing either means
+**inventing** a name, a decision neither the scanner nor the bridge may make silently. The scanner
+therefore emits the module anyway, with a legality warning, and the bridge — which would otherwise
+hand it to a registry that refuses it — skips it:
 
-**The projection.** Before registration the bridge maps every derived ID into apcore's alphabet:
+- after `scan` returns, a module whose emitted ID has a dot-separated segment that is not a full
+  match of `^[a-z][a-z0-9_]*$` is dropped with a WARNING naming **the emitted ID** — after
+  normalisation and deduplication, so `3ds_2`, not `3ds` — and the offending segment;
+- the check runs on the ID `scan` returns, never inside `transform_module`: a hook runs before the
+  scanner's final normalisation and still sees `PetStore.list_pets` or `MyThing`, which are about
+  to become legal;
+- it runs before the collision preflight and before the writer, so a skipped module is neither a
+  collision nor a failed `WriteResult`. Its scan warnings, the toolkit's legality warning among
+  them, are superseded by the one skip warning rather than logged beside it.
 
-1. lowercase it;
-2. replace `-` with `_`;
-3. if every dot-separated segment now matches `^[a-z][a-z0-9_]*$`, use it — otherwise **skip the
-   operation** with a WARNING naming the derived ID and the offending segment.
+Skipping rather than failing, because one unnameable operation must not cost the whole server — and
+the operator has `derive_module_id` and `transform_module` to name it themselves.
 
-Steps 1-2 are mechanical and lossless up to case. Step 3 is where the bridge stops: repairing a
-segment that does not begin with a letter (`/v1/2fa` → `v1.2fa.post`) means **inventing** a
-character, which is a naming decision the bridge must not make silently. Skipping rather than
-failing, because one unnameable operation must not cost the whole server — and the operator has
-`derive_module_id` and `transform_module` to name it themselves.
+The registered `module_id` then reaches the two protocol surfaces through the bridge's **existing,
+unchanged** mapping: it becomes the MCP tool name verbatim (dots and all), overridable per module
+via `display.mcp.alias`, and is dash-normalized for OpenAI function names.
 
-The projection runs **last, after any caller-supplied `transform_module`**, so the invariant *every
-registered module ID is apcore-legal* holds unconditionally; a caller hook that already produces a
-legal ID sees it as a no-op. It also runs **before** the scanner's `deduplicate_ids`, because
-lowercasing can *create* a collision that the document did not have (`listPets` and `listpets`).
-
-Only then does the bridge apply its **existing, unchanged** mapping: `module_id` becomes the MCP
-tool name verbatim (dots and all), overridable per module via `display.mcp.alias`, and is
-dash-normalized for OpenAI function names.
-
-| Spec input | Scanner emits | Projected `module_id` | MCP tool | OpenAI function |
+| Spec input | Before (≤ 0.22.x: toolkit ≤ 0.12 + bridge projection) | Scanner emits and bridge registers (toolkit ≥ 0.13) | MCP tool | OpenAI function |
 |---|---|---|---|---|
-| `operationId: listPets` | `listPets` ✗ | `listpets` | `listpets` | `listpets` |
-| `GET /pet-store/items` | `pet-store.items.get` ✗ | `pet_store.items.get` | `pet_store.items.get` | `pet_store-items-get` |
-| `GET /users/{user_id}` | `users.user_id.get` ✓ | unchanged | `users.user_id.get` | `users-user_id-get` |
-| `POST /` | `root.post` ✓ | unchanged | `root.post` | `root-post` |
-| `POST /v1/2fa` | `v1.2fa.post` ✗ | **unprojectable** | — skipped with a WARNING — | |
+| `operationId: listPets` | `listpets` | `list_pets` | `list_pets` | `list_pets` |
+| `GET /pet-store/items` | `pet_store.items.get` | `pet_store.items.get` | `pet_store.items.get` | `pet_store-items-get` |
+| `GET /pets/{petId}` | `pets.petid.get` | `pets.pet_id.get` | `pets.pet_id.get` | `pets-pet_id-get` |
+| `GET /users/{user_id}` | `users.user_id.get` | `users.user_id.get` | `users.user_id.get` | `users-user_id-get` |
+| `POST /` | `root.post` | `root.post` | `root.post` | `root-post` |
+| `POST /v1/2fa` | skipped | `v1.2fa.post` ✗ | — skipped with a WARNING — | |
 
-✗ = rejected by apcore's registry as emitted. Note the OpenAI column on row 2: dash-normalization
-replaces the **dots** only, so the underscore substituted in step 2 survives.
+✗ = still rejected by apcore's registry. Note the OpenAI column on row 2: dash-normalization
+replaces the **dots** only, so the underscore that replaced the hyphen survives.
 
 ### ID collisions are a startup failure
 
@@ -183,7 +200,8 @@ Two requirements, and they are not the same mechanism:
    yields `petstore.users.user_id.get`.
 2. **A full-set collision preflight runs before the first write, and a collision is fatal.** After
    the scan and before `HTTPProxyRegistryWriter.write`, the bridge MUST intersect the complete set
-   of derived module IDs against the IDs already in the target registry and, on a non-empty
+   of module IDs it is about to write — the scanner's emitted IDs, less any it skipped — against the
+   IDs already in the target registry and, on a non-empty
    intersection, fail startup naming **every** colliding ID — not the first. Nothing is written.
    The set is fully known at that point, the check is a set intersection, and making it atomic is
    what keeps "collision" from degrading into "partial registry".
@@ -286,8 +304,11 @@ annotated exactly like a `POST /echo`, and the approval gate does not fire for e
 An ACL `targets` pattern is matched against the `module_id`. On an extensions directory the operator
 writes both; on an OpenAPI backend, **the upstream API's authors decide the left-hand side**. A
 document that renames `deleteUser` to `removeUser` silently changes the module ID, and a
-`targets: ["deleteUser"]` deny rule stops matching — which under `default_effect: allow` is a
-fail-open of exactly the shape apcore#112 closed inside the ACL itself.
+`targets: ["delete_user"]` deny rule stops matching — which under `default_effect: allow` is a
+fail-open of exactly the shape apcore#112 closed inside the ACL itself. A change in the derivation
+moves IDs the same way without the document changing at all: apcore-toolkit 0.13.0 re-derived every
+ID taken from a camelCase name (`listpets` → `list_pets`), and the guidance below is what makes such
+an upgrade fail closed rather than open.
 
 **Required guidance, and the default the bridge should make easy:**
 
@@ -507,12 +528,14 @@ exists to avoid.
 
 ### Dependencies
 
-- **apcore-toolkit >= 0.11.1** — `load_spec`, `OpenAPIScanner`, `derive_module_id`,
-  `HTTPProxyRegistryWriter`. **0.11.0** is the capability floor: `OpenAPIScanner` does not exist
-  below it, and it is where the Rust writer stopped rejecting `HEAD` / `OPTIONS` / `TRACE` before
-  any network call — a defect that would have made the Rust path quietly broken for those
-  operations. **0.11.1** changes no toolkit API at all; it exists to raise its own apcore floor to
-  0.30.0, which is why this bridge's apcore floor moves with it.
+- **apcore-toolkit >= 0.13.0** — `load_spec`, `OpenAPIScanner`, `derive_module_id`,
+  `HTTPProxyRegistryWriter`. **0.13.0** is the correctness floor: it is the first release whose
+  scanner emits module IDs in apcore's Canonical ID alphabet, and the bridge — which no longer
+  projects IDs itself — registers what the scanner emits. Below it a camelCase or hyphenated
+  `operationId` would reach the registry verbatim and be refused. **0.11.0** is the capability
+  floor: `OpenAPIScanner` does not exist below it, and it is where the Rust writer stopped rejecting
+  `HEAD` / `OPTIONS` / `TRACE` before any network call. **0.11.1** changed no toolkit API; it raised
+  its own apcore floor to 0.30.0, which is why this bridge's apcore floor moved with it.
 - **`httpx` / a fetch implementation** — for the spec fetch and for the proxy itself.
 - **apcore >= 0.30.0** — the registration and governance surface (see
   [ACL Builder](./acl-builder.md)), plus `Config.project_root`, which 0.30.0 introduces and which
@@ -523,7 +546,7 @@ exists to avoid.
     dependency in TypeScript and Rust. This feature adds a Python extra:
 
     ```toml
-    openapi = ["apcore-toolkit[http-proxy]>=0.11.1"]
+    openapi = ["apcore-toolkit[http-proxy]>=0.13.0"]
     ```
 
     `[http-proxy]` pulls `httpx`, which both `load_spec` and the proxy need. YAML specs need no
@@ -627,24 +650,24 @@ exists to avoid.
 
 ## Conformance
 
-New shared fixture: `conformance/fixtures/openapi_backend.json`, contract_version 1.0. **Driven by
-all three bridges** as of 0.20.0.
+Shared fixture: `conformance/fixtures/openapi_backend.json`, contract_version **2.0**. **Driven by
+all three bridges** as of 0.20.0; 2.0 re-pins every expected ID to apcore-toolkit 0.13.0's output.
 
-The scanner's own behaviour is already pinned by apcore-toolkit's 24-case `openapi_scan.json`
-corpus and its Petstore end-to-end check; this fixture pins only what apcore-mcp adds on top. Its
-expectations were computed by running apcore-toolkit 0.11.1's real scanner, not derived by reading
-the algorithm. Three sections, each with its own shape:
+The scanner's own behaviour is already pinned by apcore-toolkit's 33-case `openapi_scan.json`
+corpus (2.0.0) and its Petstore end-to-end check; this fixture pins only what apcore-mcp adds on
+top. Its expectations were computed by running apcore-toolkit 0.13.0's real scanner, not derived by
+reading the algorithm. Three sections, each with its own shape:
 
 **`test_cases` — document → modules (9)**
 
 | Case | Asserts |
 |---|---|
-| `operation_id_projected_to_apcore_id` | `listPets` → `listpets`. The case the projection exists for: unprojected, apcore refuses it and the server serves nothing |
+| `operation_id_projected_to_apcore_id` | `listPets` → `list_pets`, registered as the scanner emits it. The case that makes a camelCase spec servable at all; a bridge still lowercasing (`listpets`) fails here |
 | `path_derived_id_dash_normalized_for_openai` | `users.user_id.get` → MCP verbatim, OpenAI `users-user_id-get` |
-| `hyphen_projected_to_underscore` | `pet-store.items.get` → `pet_store.items.get`; OpenAI dash-normalizes the **dots only**, so the substituted underscore survives |
-| `unprojectable_segment_skipped_with_warning` | `/v1/2fa` skipped with a WARNING; the rest of the document still registers. The scanner records nothing here, so the warning is the bridge's — an implementation that merely drops the module passes every other case and fails this one |
-| `projection_collision_deduplicated` | `listPets` + `listpets` → `listpets`, `listpets_2`. Pins that the projection runs **before** `deduplicate_ids` |
-| `prefix_applied_to_every_id` | `prefix` prepends before projection, on both surfaces |
+| `hyphen_projected_to_underscore` | `/pet-store/items` → `pet_store.items.get`; OpenAI dash-normalizes the **dots only**, so the substituted underscore survives |
+| `unprojectable_segment_skipped_with_warning` | `v1.2fa.post` skipped with a WARNING naming the ID and `2fa`; the rest of the document still registers. The scanner now appends its own legality warning, so the skip is proved by the module never reaching the writer: no ERROR-level record may name it |
+| `projection_collision_deduplicated` | `listPets` + `list-pets` → `list_pets`, `list_pets_2`, the second carrying the rename warning. Normalisation-made collisions are the scanner's to resolve and never reach the preflight (contract 1.0 used `listPets` + `listpets`, which no longer collide) |
+| `prefix_applied_to_every_id` | prefix `PetStore` → `pet_store.list_pets`, `pet_store.users.user_id.get`, on both surfaces. Pins that the skip check runs on the ID `scan` returns: a hook sees `PetStore.list_pets` |
 | `get_maps_to_readonly_hint` | `GET` → `readOnlyHint: true`, `openWorldHint: true` |
 | `delete_maps_to_destructive_hint` | `DELETE` → `destructiveHint: true` |
 | `post_carries_no_behavioral_hint` | `POST` → all four hints at protocol defaults, `requires_approval` false — the gap pinned as a fact, so it cannot be closed accidentally in one language only |
@@ -666,9 +689,13 @@ the algorithm. Three sections, each with its own shape:
 | `missing_prefix_in_mixed_deployment_rejected` | two backend sources, no `prefix` |
 | `id_collision_against_registry_rejected` | the pre-write preflight names **both** seeded collisions and registers nothing — an implementation reporting only the first forces one restart per collision |
 
-Deliberately **not** in the shared fixture: the wording of the toolkit's own scan errors, and the
-proxy's request shaping (body-vs-query partitioning, path-parameter encoding). Both belong to
-apcore-toolkit's corpus, and pinning them here would pin another repository's text.
+Deliberately **not** in the shared fixture: the wording of the toolkit's own scan errors and
+warnings, the normalisation algorithm itself, and the proxy's request shaping (body-vs-query
+partitioning, path-parameter encoding). All belong to apcore-toolkit's corpus, and pinning them here
+would pin another repository's contract. Nor is a caller-hook case: the Rust bridge's
+`openapi_backend` exposes no `transform_module` / `derive_module_id`, and a shared case must run in
+all three. That a hook returning `MyThing` is normalised to `my_thing` rather than skipped is pinned
+per language in Python and TypeScript.
 
 ## Known cross-language divergences
 

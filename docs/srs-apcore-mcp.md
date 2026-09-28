@@ -8,8 +8,8 @@ description: "IEEE 830 Software Requirements Specification for apcore-mcp: funct
 |-------------|--------------------------------------------------------------------------|
 | Title       | apcore-mcp: Automatic MCP Server & OpenAI Tools Bridge                   |
 | Document    | Software Requirements Specification (SRS)                                |
-| Version     | 2.0                                                                      |
-| Date        | 2026-04-28                                                               |
+| Version     | 2.5                                                                      |
+| Date        | 2026-09-28                                                               |
 | Author      | aiperceivable Engineering Team                                             |
 | Status      | Draft                                                                    |
 | PRD Ref     | `docs/prd-apcore-mcp.md` v1.8                                           |
@@ -37,6 +37,7 @@ description: "IEEE 830 Software Requirements Specification for apcore-mcp: funct
 | 2.2     | 2026-09-05 | aiperceivable Engineering Team | apcore 0.29.0 + apcore-toolkit 0.11.0 (released as docs 0.20.0). NFR-COMPAT-002 floor raised to apcore 0.29.0 / apcore-toolkit 0.11.0, both correctness floors rather than conventions. New §3.25 FR-ACL (F-052, F-053): PROTOCOL_SPEC §6.2.1 pattern-array shape closure at the `mcp.acl` door, §6.2.1's normative validation order (all three bridges currently run it reversed), `ACLRuleError` wrapping with the rule index — in Python it is a `ModuleError`, not the `ValueError` the builder promises — and the tier-2 `validate_rules()` startup diagnostic. New §3.26 FR-OPENAPI (F-054, F-055): the OpenAPI backend source, `module_id` projection onto both protocol surfaces, scan-warning reporting, the mandatory prefix in mixed deployments, and the write-method-with-no-ACL warning that records `requires_approval = false` on every scanned module. |
 | 2.3     | 2026-09-06 | aiperceivable Engineering Team | apcore 0.30.0 + apcore-toolkit 0.11.1. NFR-COMPAT-002 floors raised to apcore 0.30.0 / apcore-toolkit 0.11.1, with the four justifications kept separate (0.29.0 correctness, 0.11.0 capability, 0.11.1 floor-only, 0.30.0 transitive + `Config.project_root`). New FR-OPENAPI-007: `mcp.openapi.spec` is the `mcp` namespace's first path-typed key, and apcore 0.30.0's §9.2.1/§9.2.2 protections do not extend to a consumer namespace — `Config.path_typed_keys()` is a hardcoded tuple and the empty-value discard is gated on it — so the bridge owns URL-verbatim, empty-discard and project-root resolution itself, adopting §9.2.2's target semantics early because the key has no deployed population. The rest of apcore 0.30.0 (binding discovery, `bindings.*` defaults, `target_id` → `target`) is out of scope; no bridge references any of it. |
 | 2.4     | 2026-09-06 | aiperceivable Engineering Team | Both conformance fixtures landed (`acl_config.json` 1.2, `openapi_backend.json` 1.0), and authoring them exposed a blocking defect in FR-OPENAPI-002 as written. apcore-toolkit's `derive_module_id` emits IDs over `[A-Za-z0-9_.-]`; apcore's registry accepts only `^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$`, enforced at `Registry.register` and `Executor.call`. Only two of nine realistic operation shapes register unrepaired, and the canonical Swagger Petstore is entirely in the rejected set — verified end-to-end, yielding an empty registry. FR-OPENAPI-002 now specifies the projection (lowercase, `-` → `_`, run after `transform_module` and before `deduplicate_ids`); new FR-OPENAPI-008 specifies the loud skip for a segment that cannot be repaired without inventing a character. Also an upstream gap: `OpenAPIScanner` and `HTTPProxyRegistryWriter` are documented as an end-to-end pair that cannot serve the reference spec the scanner was verified against. |
+| 2.5     | 2026-09-28 | aiperceivable Engineering Team | apcore-toolkit 0.13.0 closed the module-ID alphabet gap that FR-OPENAPI-002 v2.4 worked around: `OpenAPIScanner` now normalises every emitted `module_id` into apcore's Canonical ID alphabet itself — camelCase split into words (`listPets` → `list_pets`), `-` and other characters → `_`, a legal ID never rewritten, the final ID normalised after `base_path_prefix` and both ID-affecting hooks. FR-OPENAPI-002 now requires the bridge to register the scanner's IDs as emitted, with no projection of its own; the v2.4 projection (lowercase, `-` → `_`) was redundant for the alphabet and disagreed with the toolkit on every camelCase name (`listpets` vs `list_pets`). FR-OPENAPI-008's skip moves from inside `transform_module` to the IDs `scan` returns, before the preflight and the writer, and names the emitted ID. FR-OPENAPI-006 intersects the IDs about to be written. NFR-COMPAT-002: apcore-toolkit floor raised to 0.13.0 (correctness floor), and the apcore floor corrected to 0.31.0, raised at 0.22.0 and not recorded here then. `openapi_backend.json` contract 2.0. |
 
 ---
 
@@ -3524,32 +3525,34 @@ mcp:
 
 ---
 
-#### FR-OPENAPI-002: A derived module_id is projected, then reaches both protocol surfaces unchanged
+#### FR-OPENAPI-002: The scanner's module_id is registered as emitted, then reaches both protocol surfaces unchanged
 
 | Field | Value |
 |-------|-------|
 | **ID** | FR-OPENAPI-002 |
-| **Title** | MCP tool name verbatim; OpenAI function name dash-normalized |
+| **Title** | Registered as emitted; MCP tool name verbatim; OpenAI function name dash-normalized |
 | **Priority** | P1 |
 | **Traces to** | F-054 |
 
-**Description:** A `module_id` produced by the toolkit's `derive_module_id` shall first be **projected into apcore's legal alphabet**, and only then reach MCP as the tool name verbatim, dots retained, and OpenAI as the dash-normalized form. `display.mcp.alias` continues to override the MCP name per module.
+**Description:** The bridge shall register each module under the `module_id` apcore-toolkit's `OpenAPIScanner.scan` returns, apply no projection or other rewrite of its own, and install no hook of its own in the scan. That ID shall reach MCP as the tool name verbatim, dots retained, and OpenAI as the dash-normalized form. `display.mcp.alias` continues to override the MCP name per module.
 
-The projection is required because the two alphabets differ: `derive_module_id` sanitizes to `[A-Za-z0-9_.-]`, while apcore's registry accepts only `^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$` and enforces it at `Registry.register` and again at `Executor.call`. Measured against apcore 0.30.0 and apcore-toolkit 0.11.1, only two of nine realistic operation shapes register unrepaired, and the canonical Swagger Petstore (`listPets`, `createPets`, `showPetById`) is entirely in the rejected set — scanning cleanly, failing registration on every operation as a per-module `WriteResult`, and yielding an empty registry.
-
-The projection shall be: (1) lowercase; (2) replace `-` with `_`; (3) if every dot-separated segment then matches `^[a-z][a-z0-9_]*$`, use it — otherwise skip the operation per FR-OPENAPI-008. It shall run **after** any caller-supplied `transform_module`, so that the invariant *every registered module ID is apcore-legal* holds unconditionally, and **before** the scanner's `deduplicate_ids`, because lowercasing can create a collision the document did not contain.
+The bridge relies on the toolkit for the alphabet. Since apcore-toolkit 0.13.0 (NFR-COMPAT-002) the scanner normalises every emitted `module_id` into apcore's Canonical ID alphabet, `^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$` — the pattern apcore's registry enforces at `Registry.register` and again at `Executor.call`: camelCase is split into words (`listPets` → `list_pets`, `getHTTPResponse` → `get_http_response`), every character outside `[A-Za-z0-9_.]` becomes `_`, an ID that is already legal is never rewritten, and the **final** ID is normalised after `base_path_prefix` and the `derive_module_id` / `transform_module` hooks and before the scanner's own `deduplicate_ids`. The one shape normalisation cannot repair is skipped per FR-OPENAPI-008.
 
 **Input/Trigger:** `GET /users/{user_id}` with no `operationId`.
 
-**Expected Output:** `module_id` `users.user_id.get` (already legal, projection is a no-op); MCP tool `users.user_id.get`; OpenAI function `users-user_id-get`.
+**Expected Output:** `module_id` `users.user_id.get`; MCP tool `users.user_id.get`; OpenAI function `users-user_id-get`.
 
 **Boundary Conditions:**
-- `operationId: listPets` → `listpets` on both surfaces. Unprojected, apcore refuses it.
-- `GET /pet-store/items` → `pet_store.items.get`; the OpenAI form is `pet_store-items-get` — dash-normalization replaces the **dots only**, so the substituted underscore survives.
-- `listPets` and `listpets` in one document → `listpets` and `listpets_2`, the second carrying the scanner's rename warning.
-- Empty path → `root.<method>`, already legal.
+- `operationId: listPets` → `list_pets` on both surfaces.
+- `GET /pets/{petId}` → `pets.pet_id.get`; OpenAI `pets-pet_id-get`.
+- `GET /pet-store/items` → `pet_store.items.get`; the OpenAI form is `pet_store-items-get` — dash-normalization replaces the **dots only**, so the underscore that replaced the hyphen survives.
+- `listPets` and `list-pets` in one document → `list_pets` and `list_pets_2`, the second carrying the scanner's rename warning; the collision never reaches FR-OPENAPI-006.
+- `prefix: PetStore` → `pet_store.list_pets`, `pet_store.users.user_id.get`.
+- A caller-supplied hook returning `MyThing` → `my_thing`, registered, not skipped.
+- An `operationId` that is already legal (FastAPI's `read_item_items__item_id__get`) → used as it is.
+- Empty path → `root.<method>`.
 
-**Error Conditions:** None — an unprojectable ID is a skip (FR-OPENAPI-008), not an error.
+**Error Conditions:** None — an ID the registry would still refuse is a skip (FR-OPENAPI-008), not an error.
 
 ---
 
@@ -3635,7 +3638,7 @@ The warning shall report the **absence of an approval path, never the presence o
 | **Priority** | P0 |
 | **Traces to** | F-055 |
 
-**Description:** After the scan and **before** `HTTPProxyRegistryWriter.write` is called, the bridge shall intersect the complete set of derived module IDs against the IDs already present in the target registry and, on a non-empty intersection, fail startup naming **every** colliding ID — not the first — having written nothing. apcore-toolkit's writers report per-module outcomes as `WriteResult`s and do not raise, so without this preflight a duplicate registration would surface as one failed `WriteResult`, be logged at ERROR under FR-OPENAPI-003, and leave the server running with a **partial registry**: a tool advertised by the document, absent from `tools/list`, with the operator told only by one log line. The escalation from per-module report to fatal is the bridge's decision to make, not the writer's.
+**Description:** After the scan and **before** `HTTPProxyRegistryWriter.write` is called, the bridge shall intersect the complete set of module IDs it is about to write — the scanner's emitted IDs, less any skipped per FR-OPENAPI-008 — against the IDs already present in the target registry and, on a non-empty intersection, fail startup naming **every** colliding ID — not the first — having written nothing. apcore-toolkit's writers report per-module outcomes as `WriteResult`s and do not raise, so without this preflight a duplicate registration would surface as one failed `WriteResult`, be logged at ERROR under FR-OPENAPI-003, and leave the server running with a **partial registry**: a tool advertised by the document, absent from `tools/list`, with the operator told only by one log line. The escalation from per-module report to fatal is the bridge's decision to make, not the writer's.
 
 The set of derived IDs is fully known at this point and the check is a set intersection, so atomicity costs nothing. Within-document duplicates never reach this check — the scanner already renames them `_2`, `_3`, … with a warning.
 
@@ -3684,7 +3687,7 @@ Rule 3 adopts §9.2.2's **target** semantics rather than the 1.x semantics apcor
 
 ---
 
-#### FR-OPENAPI-008: An unprojectable module ID skips the operation loudly
+#### FR-OPENAPI-008: A module ID normalisation cannot make legal skips the operation loudly
 
 | Field | Value |
 |-------|-------|
@@ -3693,19 +3696,22 @@ Rule 3 adopts §9.2.2's **target** semantics rather than the 1.x semantics apcor
 | **Priority** | P1 |
 | **Traces to** | F-054 |
 
-**Description:** When a derived module ID still fails apcore's pattern after FR-OPENAPI-002's projection — a dot-segment not beginning with a lowercase letter, such as `v1.2fa.post` from `POST /v1/2fa` — the bridge shall skip that operation and emit a WARNING naming the derived ID and the offending segment. The remaining operations shall still register.
+**Description:** After `OpenAPIScanner.scan` returns, the bridge shall skip every module whose emitted `module_id` has a dot-separated segment that is not a full match of `^[a-z][a-z0-9_]*$`, and emit a WARNING naming that emitted ID and the offending segment. The remaining modules shall still register.
 
-Skipping rather than repairing: completing such a segment means **inventing** a character, which is a naming decision the bridge must not make silently, and the operator already has `derive_module_id` and `transform_module` to make it explicitly. Skipping rather than failing: one unnameable operation shall not cost the whole server.
+Normalisation leaves exactly two such shapes: a segment beginning with a digit — `v1.2fa.post` from `POST /v1/2fa`, or `operationId: 3ds` — and an empty ID, which only a hook can produce. The scanner does not repair them, because repairing means **inventing** a name; it emits the module with a legality warning appended. The bridge is what would hand that module to a registry that refuses it, so the decision to skip is the bridge's, and the operator has `derive_module_id` and `transform_module` to name the operation explicitly. Skipping rather than failing: one unnameable operation shall not cost the whole server.
 
-The warning is the bridge's own. A `transform_module` hook returning null drops the module **silently** — the scanner records nothing — so an implementation that merely drops it satisfies every other assertion about the resulting module set and must be caught here.
+The check shall run on the ID `scan` returned — after normalisation and deduplication, so a warning names `3ds_2`, not `3ds` — and **not** inside `transform_module`, which runs before the scanner's final normalisation and would see IDs that are about to become legal (`PetStore.list_pets`, `MyThing`). It shall run before the collision preflight (FR-OPENAPI-006) and before `HTTPProxyRegistryWriter.write`, so a skipped module is neither a collision nor a failed `WriteResult`. The skip WARNING supersedes the module's scan warnings, the toolkit's legality warning among them; they are not logged beside it.
+
+The scanner's own legality warning names the same ID and segment, so a WARNING alone does not prove the skip: the observable that does is that no ERROR-level record names the module — a module handed to the writer with an illegal ID becomes a failed `WriteResult` (`INVALID_MODULE_ID`), logged at ERROR per FR-OPENAPI-003.
 
 **Input/Trigger:** A document carrying `POST /v1/2fa` and `GET /pets` (`operationId: listPets`).
 
-**Expected Output:** One WARNING naming `v1.2fa.post` and the segment `2fa`; `listpets` registers and is served.
+**Expected Output:** One WARNING naming `v1.2fa.post` and the segment `2fa`; no ERROR naming `v1.2fa.post`; `list_pets` registers and is served.
 
 **Boundary Conditions:**
-- Every operation unprojectable: the zero-module WARNING of FR-OPENAPI-001 also fires, and the server still starts.
-- A caller-supplied `derive_module_id` or `transform_module` that yields a legal ID: no skip, no warning.
+- Every operation skipped: the zero-module WARNING of FR-OPENAPI-001 also fires, and the server still starts.
+- A caller-supplied `derive_module_id` or `transform_module` whose output normalises to a legal ID (`MyThing` → `my_thing`): no skip, no warning.
+- A hook producing `Pets.2Fa`: the scanner emits `pets.2_fa`, and the warning names `pets.2_fa` and `2_fa`, not the hook's spelling.
 
 **Error Conditions:** None. Never fatal.
 
@@ -3976,12 +3982,14 @@ The warning is the bridge's own. A `transform_module` hook returning null drops 
 | Field | Value |
 |-------|-------|
 | **ID** | NFR-COMPAT-002 |
-| **Title** | Compatible with apcore-python >= 0.30.0 |
-| **Target** | apcore >= 0.30.0, apcore-toolkit >= 0.11.1 |
+| **Title** | Compatible with apcore-python >= 0.31.0 |
+| **Target** | apcore >= 0.31.0, apcore-toolkit >= 0.13.0 |
 | **Measurement** | Integration tests against latest apcore-python release |
 | **Traces to** | PRD Section 8.3 |
 
-**Description:** apcore-mcp shall declare a dependency on `apcore>=0.30.0` and shall be tested against the latest release. All three SDKs pin the same floor at 0.20.0 — `apcore>=0.30.0` (Python), `apcore-js>=0.30.0` (TypeScript), `apcore = ">=0.30"` (Rust) — alongside `apcore-toolkit>=0.11.1` and `mcp-embedded-ui>=0.5.0`.
+**Description:** apcore-mcp shall declare a dependency on `apcore>=0.31.0` and shall be tested against the latest release. All three SDKs pin the same floors — `apcore>=0.31.0` (Python), `apcore-js>=0.31.0` (TypeScript), `apcore = ">=0.31"` (Rust), raised at 0.22.0 — alongside `apcore-toolkit>=0.13.0` (Rust `">=0.13"`) and `mcp-embedded-ui>=0.5.0`.
+
+**apcore-toolkit 0.13.0 is the correctness floor for the OpenAPI Backend:** it is the first release whose `OpenAPIScanner` emits module IDs in apcore's Canonical ID alphabet, and FR-OPENAPI-002 registers what the scanner emits with no projection of the bridge's own — below 0.13.0 a camelCase or hyphenated `operationId` would reach the registry verbatim and be refused. apcore 0.31.0 is also forced transitively: apcore-toolkit 0.12.0 and 0.13.0 both require it. The paragraph below records the floors' history as of 0.20.0.
 
 The floors have four distinct justifications and shall not be collapsed into one. **apcore 0.29.0 is the correctness floor:** it closes the shape of an ACL `callers` / `targets` array at every entry point (PROTOCOL_SPEC §6.2.1), and on 0.28.0 the shapes it rejects load silently and leave the rule inert — a `deny` rule under `default_effect: allow` permits the call it names. **apcore-toolkit 0.11.0 is the capability floor:** `OpenAPIScanner` does not exist below it, and it is where the Rust `HTTPProxyRegistryWriter` stopped rejecting `HEAD` / `OPTIONS` / `TRACE` before any network call. **apcore-toolkit 0.11.1 changes no toolkit API**; it exists to raise its own apcore floor. **apcore 0.30.0 is therefore forced transitively**, and is independently required by FR-OPENAPI-007, which resolves `mcp.openapi.spec` against `Config.project_root` — an accessor 0.30.0 introduces.
 

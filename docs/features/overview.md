@@ -28,7 +28,7 @@ description: "Auto-generated index of all apcore-mcp feature specs with dependen
 | [Markdown](./markdown.md) | Renders `Tool.description` and OpenAI `function.description` as canonical apcore-toolkit Markdown for richer LLM tool-selection signal (`rich_description` / `richDescription` / `with_rich_description`). | apcore-toolkit 0.6+ (optional) | released-v0.15.0 |
 | [System Management Extension](./system-management-extension.md) | Unofficial MCP extension (`com.aiperceivable/management`) advertising the `system.*` management surface's shape in `initialize`; Phase A only. | mcp-server-factory | released-v0.19.0 (Phase A) |
 | [ACL Builder](./acl-builder.md) | Builds an `apcore.ACL` from the `mcp.acl` Config Bus section; owns the Config-Bus-shaped validation, wraps apcore's §6.2.1 pattern-array rejections with a rule index, and reports tier-2 never-matches findings at startup. | apcore 0.30.0 | released-v0.20.0 |
-| [OpenAPI Backend](./openapi-backend.md) | Third backend source — turns an OpenAPI 3.0/3.1 document into MCP tools via apcore-toolkit's `OpenAPIScanner` + `HTTPProxyRegistryWriter`. | apcore-toolkit 0.11.1, schema-converter, annotation-mapper, mcp-server-factory | released-v0.20.0 |
+| [OpenAPI Backend](./openapi-backend.md) | Third backend source — turns an OpenAPI 3.0/3.1 document into MCP tools via apcore-toolkit's `OpenAPIScanner` + `HTTPProxyRegistryWriter`. | apcore-toolkit 0.13.0, schema-converter, annotation-mapper, mcp-server-factory | released-v0.20.0 |
 
 ## Execution Order
 

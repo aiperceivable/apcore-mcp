@@ -13,7 +13,9 @@ The CLI allows you to launch an MCP server by pointing to an extensions director
 !!! note "New in 0.20.0"
     `--from-openapi`, every `--openapi-*` flag and the `mcp.openapi` Config Bus section ship in
     0.20.0, as does the `mcp.acl` pattern-array closure noted in the Config Bus table. They
-    require apcore >= 0.30.0 and apcore-toolkit >= 0.11.1.
+    required apcore >= 0.30.0 and apcore-toolkit >= 0.11.1 then; the current floors are apcore
+    >= 0.31.0 and apcore-toolkit >= 0.13.0, the first toolkit release whose scanner emits module
+    IDs in apcore's alphabet (see [OpenAPI Backend § `module_id` → tool name](features/openapi-backend.md#module_id-tool-name)).
 
 **Backend-source rule.** **At least one** source is required. The two may be combined — an apcore project and a remote API served from one bridge is a supported deployment — and when more than one is given, `--openapi-prefix` becomes **required** so the two ID spaces cannot collide. The resulting registry is the **union**, assembled in a fixed order: extensions directory first, then OpenAPI operations. Order matters only for diagnostics; a module ID appearing in both sources is a startup failure, not a last-writer-wins merge (see [OpenAPI Backend § ID collisions](features/openapi-backend.md#id-collisions-are-a-startup-failure)). A `Registry` or `Executor` passed programmatically **replaces** both — it is not merged with them, because the caller who built it already decided what is in it; passing one together with `--extensions-dir` or `--from-openapi` is a configuration error rather than a silent override.
 
