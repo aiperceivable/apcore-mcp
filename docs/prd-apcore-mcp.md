@@ -297,7 +297,7 @@ The `requires_approval` annotation is not a native MCP annotation but is preserv
 
 **Acceptance Criteria:**
 1. Each apcore error type listed above produces a distinct, identifiable MCP error response.
-2. `SchemaValidationError` responses include field-level error details (field name, error code, message).
+2. `SchemaValidationError` responses include canonical diagnostics (`path`, `keyword`, `message`), with JSON Pointer locations in the readable summary and the original structured details preserved.
 3. `ACLDeniedError` responses do not leak sensitive security information (no caller_id exposure unless explicitly configured).
 4. Unexpected exceptions produce a generic "Internal error" message without leaking stack traces to the MCP client.
 5. All error responses set `isError=true` in the MCP result.

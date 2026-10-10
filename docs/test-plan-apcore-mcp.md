@@ -810,7 +810,7 @@ show_missing = true
 
 - **Priority:** P0
 - **Type:** Unit
-- **Preconditions:** ExecutionRouter with mock Executor; `call_async` raises `SchemaValidationError("Validation failed", errors=[{"field": "width", "code": "int_type", "message": "Input should be a valid integer"}])`
+- **Preconditions:** ExecutionRouter with mock Executor; `call_async` raises `SchemaValidationError("Validation failed", errors=[{"path": "/width", "keyword": "type", "message": "Input should be a valid integer"}])`
 - **Test Data:**
   ```python
   tool_name = "image.resize"
@@ -819,9 +819,9 @@ show_missing = true
 - **Steps:**
   1. Call `await router.handle_call("image.resize", {"width": "not_a_number", "height": 600})`.
   2. Assert `result.isError` is `True`.
-  3. Assert `result.content[0].text` contains `"Input validation failed"`.
+  3. Assert the error text contains `"Schema validation failed"`.
   4. Assert text contains `"width"` field name.
-- **Expected Result:** `CallToolResult(isError=True)` with text `"Input validation failed:\n- width: Input should be a valid integer (int_type)"`.
+- **Expected Result:** `CallToolResult(isError=True)` with text `"Schema validation failed:\n  /width: Input should be a valid integer"`.
 - **Traceability:** F-003 (AC3), F-004
 
 ---
@@ -1041,14 +1041,14 @@ show_missing = true
   ```python
   error = SchemaValidationError(
       "Validation failed",
-      errors=[{"field": "width", "code": "int_type", "message": "Input should be a valid integer"}]
+      errors=[{"path": "/width", "keyword": "type", "message": "Input should be a valid integer"}]
   )
   ```
 - **Steps:**
   1. Call `mapper.to_mcp_error(error)`.
-  2. Assert text starts with `"Input validation failed:"`.
-  3. Assert text contains `"width: Input should be a valid integer (int_type)"`.
-- **Expected Result:** `"Input validation failed:\n- width: Input should be a valid integer (int_type)"`.
+  2. Assert the mapped message starts with `"Schema validation failed:"`.
+  3. Assert text contains `"/width: Input should be a valid integer"`.
+- **Expected Result:** `"Schema validation failed:\n  /width: Input should be a valid integer"`.
 - **Traceability:** F-004
 
 ---
@@ -1063,8 +1063,8 @@ show_missing = true
   error = SchemaValidationError(
       "Validation failed",
       errors=[
-          {"field": "width", "code": "int_type", "message": "Input should be a valid integer"},
-          {"field": "format", "code": "enum", "message": "Input should be 'png', 'jpg' or 'webp'"}
+          {"path": "/width", "keyword": "type", "message": "Input should be a valid integer"},
+          {"path": "/format", "keyword": "enum", "message": "Input should be 'png', 'jpg' or 'webp'"}
       ]
   )
   ```
@@ -1073,6 +1073,19 @@ show_missing = true
   2. Assert text contains both field error lines.
 - **Expected Result:** Multi-line text with both `width` and `format` errors listed.
 - **Traceability:** F-004
+
+---
+
+#### TC-ERROR-003a: Canonical JSON Pointer validation diagnostics
+
+- **Priority:** P0
+- **Type:** Regression (Python, TypeScript, Rust)
+- **Test Data:** A nested escaped path `/items/0/a~1b~0c`, an empty root pointer,
+  and an entry with both `path: "/name"` and `field: "legacy"`.
+- **Expected Result:** The readable locations are `/items/0/a~1b~0c`, `<root>`,
+  and `/name` respectively. Structured `details.errors` is unchanged, including
+  `keyword`. Existing field-only cases continue to pass.
+- **Traceability:** F-004, FR-ERROR-002
 
 ---
 

@@ -6,7 +6,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python Version](https://img.shields.io/badge/python-3.11%2B-blue)](https://github.com/aiperceivable/apcore-mcp-python)
-[![TypeScript Version](https://img.shields.io/badge/TypeScript-Node_18%2B-blue)](https://github.com/aiperceivable/apcore-mcp-typescript)
+[![TypeScript Version](https://img.shields.io/badge/TypeScript-Node_20%2B-blue)](https://github.com/aiperceivable/apcore-mcp-typescript)
 [![Rust Version](https://img.shields.io/badge/Rust-1.75%2B-blue)](https://github.com/aiperceivable/apcore-mcp-rust)
 
 > **Build once, invoke by Code or AI.**
@@ -48,7 +48,7 @@
     ```bash
     npm install apcore-mcp
     ```
-    *Requires Node.js 18+. apcore-toolkit is an optional peer for Markdown tool descriptions.*
+    *Requires Node.js 20+, apcore-js >= 0.32.0 and apcore-toolkit >= 0.14.0.*
 
 === "🦀 Rust"
 

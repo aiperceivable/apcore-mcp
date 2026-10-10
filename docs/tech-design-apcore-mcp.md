@@ -529,7 +529,7 @@ sequenceDiagram
     end
 
     alt SchemaValidationError
-        Exec-->>Router: raises SchemaValidationError(errors=[{field: "width", code: "int_type", message: "..."}])
+        Exec-->>Router: raises SchemaValidationError(errors=[{path: "/width", keyword: "type", message: "..."}])
         Router->>EMap: to_mcp_error(error)
         EMap->>EMap: _format_validation_errors(error)
         EMap-->>Router: {isError:true, errorType:"SCHEMA_VALIDATION_ERROR", message:"Input validation failed:\n- width: ...", ...}
@@ -1095,7 +1095,7 @@ class ErrorMapper:
         | apcore Error                    | MCP Error Message Format                   |
         +---------------------------------+--------------------------------------------+
         | ModuleNotFoundError             | "Module not found: {module_id}"            |
-        | SchemaValidationError           | "Input validation failed:\\n- {field}: {msg}"|
+        | SchemaValidationError           | "Schema validation failed:\\n  {path}: {msg}"|
         | ACLDeniedError                  | "Access denied"                            |
         | ModuleTimeoutError              | "Module timed out after {timeout_ms}ms"    |
         | InvalidInputError               | "Invalid input: {message}"                 |
@@ -1140,20 +1140,15 @@ class ErrorMapper:
 **Internal implementation:**
 
 ```python
-    def _format_validation_errors(self, error: SchemaValidationError) -> str:
-        """Format SchemaValidationError field-level details into a human-readable string.
+    def _format_validation_errors(self, errors: Any) -> str:
+        """Format error.details["errors"] as an indented validation summary.
 
-        Format:
-            "Input validation failed:
-            - field_name: error message (error_code)
-            - other_field: other message (other_code)"
+        Canonical entries contain path, keyword and message. Prefer a string
+        JSON Pointer path; display an empty pointer as <root>. Fall back to
+        the legacy field key, then unknown. Preserve pointer escaping and
+        pass the original details through unchanged in the error envelope.
 
-        Args:
-            error: SchemaValidationError with details["errors"] list.
-                   Each error dict has keys: "field", "code", "message".
-
-        Returns:
-            Formatted multi-line string.
+        Empty or non-list errors return "Schema validation failed".
         """
 
     def _sanitize_message(self, error: Exception) -> str:
@@ -2875,7 +2870,7 @@ Ensures MCP clients always receive a valid object schema.
 | apcore Error Class            | Error Code (from source)       | MCP isError | MCP Message Format                                   | Details Included                                      |
 |-------------------------------|-------------------------------|:-----------:|------------------------------------------------------|-------------------------------------------------------|
 | `ModuleNotFoundError`         | `MODULE_NOT_FOUND`            | True        | `"Module not found: {module_id}"`                    | module_id                                             |
-| `SchemaValidationError`       | `SCHEMA_VALIDATION_ERROR`     | True        | `"Input validation failed:\n- {field}: {msg} ({code})"` | Field-level errors: field name, message, error code   |
+| `SchemaValidationError`       | `SCHEMA_VALIDATION_ERROR`     | True        | `"Schema validation failed:\n  {path}: {msg}"` | Canonical diagnostics: JSON Pointer path, keyword, message   |
 | `ACLDeniedError`              | `ACL_DENIED`                  | True        | `"Access denied"`                                    | None (caller_id NOT exposed for security)             |
 | `ModuleTimeoutError`          | `MODULE_TIMEOUT`              | True        | `"Module timed out after {timeout_ms}ms"`            | module_id, timeout_ms                                 |
 | `InvalidInputError`           | `GENERAL_INVALID_INPUT`       | True        | `"Invalid input: {message}"`                         | Original error message                                |
@@ -3287,7 +3282,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-    "apcore>=0.30.0",
+    "apcore>=0.32.0",
     "mcp>=1.26,<2.0",
     "mcp-embedded-ui>=0.5.0",
     "PyJWT>=2.0",
@@ -3300,7 +3295,7 @@ dependencies = [
 # TypeScript and Rust declare it as a hard dependency instead -- an intentional
 # per-language difference, not drift.
 markdown = [
-    "apcore-toolkit>=0.13.0",
+    "apcore-toolkit>=0.14.0",
 ]
 
 # The OpenAPI Backend (F-054). `[http-proxy]` resolves httpx, which both
@@ -3310,7 +3305,7 @@ markdown = [
 # entry point raises an actionable "install 'apcore-mcp[openapi]'" message
 # rather than letting an ImportError traceback escape.
 openapi = [
-    "apcore-toolkit[http-proxy]>=0.13.0",
+    "apcore-toolkit[http-proxy]>=0.14.0",
 ]
 
 dev = [

@@ -770,23 +770,34 @@ client indexing `response["ai_guidance"]` gets a KeyError. See `features/error-m
 | **Priority** | P0 |
 | **Traces to** | F-004 |
 
-**Description:** When `Executor.call_async()` raises `SchemaValidationError`, the `ErrorMapper` shall return an error response dict with `isError=True` whose `message` is formatted as:
-```
-Input validation failed:
-- {field}: {message} ({code})
-- {field}: {message} ({code})
-```
-where each line corresponds to an error entry from `error.details["errors"]`. Each error entry is a dict with keys `"field"`, `"code"`, and `"message"`.
+**Description:** When `Executor.call_async()` raises `SchemaValidationError`, the
+`ErrorMapper` shall return an error response dict with `isError=True` and a message
+formatted as:
 
-**Input/Trigger:** `SchemaValidationError(message="Input validation failed", errors=[{"field": "width", "code": "int_type", "message": "Input should be a valid integer"}])`.
+```text
+Schema validation failed:
+  {location}: {message}
+  {location}: {message}
+```
 
-**Expected Output:** `CallToolResult(content=[TextContent(type="text", text="Input validation failed:\n- width: Input should be a valid integer (int_type)")], isError=True)`.
+Each line corresponds to an entry in `error.details["errors"]`. apcore 0.32.0 uses
+`{path, keyword, message}`. A string JSON Pointer `path` takes precedence over the
+legacy `field` key; an empty pointer is displayed as `<root>`. Otherwise, `field`
+is used, with `unknown` as the missing-location fallback. `details.errors` is
+preserved unchanged, including `keyword`.
+
+**Input/Trigger:** `SchemaValidationError("Validation failed", errors=[{"path": "/width", "keyword": "type", "message": "Input should be a valid integer"}])`.
+
+**Expected Output:** An error dict whose message is
+`"Schema validation failed:\n  /width: Input should be a valid integer"` and whose
+`details` contains the original diagnostic entries.
 
 **Boundary Conditions:**
-- Single validation error: One bullet line.
-- Multiple validation errors: Multiple bullet lines, one per error.
-- Empty errors list: Return text `"Input validation failed"` without bullet lines.
-- Nested field path (e.g., `"parameters.width"`): Preserve the full dotted path.
+- Single or multiple errors: One indented line per error.
+- Empty errors list: `"Schema validation failed"` with no appended lines.
+- Nested and escaped JSON Pointers: Preserve `/items/0/a~1b~0c` verbatim.
+- Empty pointer: Display `<root>` without changing the original `path` in details.
+- Legacy field-only entries remain supported; a canonical `path` wins if both exist.
 
 **Error Conditions:** None.
 
@@ -3977,19 +3988,36 @@ The scanner's own legality warning names the same ID and segment, so a WARNING a
 
 ---
 
-#### NFR-COMPAT-002: apcore-python version compatibility
+#### NFR-COMPAT-002: apcore SDK version compatibility
 
 | Field | Value |
 |-------|-------|
 | **ID** | NFR-COMPAT-002 |
-| **Title** | Compatible with apcore-python >= 0.31.0 |
-| **Target** | apcore >= 0.31.0, apcore-toolkit >= 0.13.0 |
-| **Measurement** | Integration tests against latest apcore-python release |
+| **Title** | Compatible with apcore >= 0.32.0 |
+| **Target** | apcore >= 0.32.0, apcore-toolkit >= 0.14.0 |
+| **Measurement** | Full SDK suites against published dependency releases |
 | **Traces to** | PRD Section 8.3 |
 
-**Description:** apcore-mcp shall declare a dependency on `apcore>=0.31.0` and shall be tested against the latest release. All three SDKs pin the same floors — `apcore>=0.31.0` (Python), `apcore-js>=0.31.0` (TypeScript), `apcore = ">=0.31"` (Rust), raised at 0.22.0 — alongside `apcore-toolkit>=0.13.0` (Rust `">=0.13"`) and `mcp-embedded-ui>=0.5.0`.
+**Description:** All three SDKs shall declare the same dependency floors:
+`apcore>=0.32.0` (Python), `apcore-js>=0.32.0` (TypeScript), `apcore = ">=0.32"`
+(Rust), and `apcore-toolkit>=0.14.0` (Rust `">=0.14"`). TypeScript requires Node.js
+20+, matching its dependencies. `mcp-embedded-ui>=0.5.0` is unchanged.
 
-**apcore-toolkit 0.13.0 is the correctness floor for the OpenAPI Backend:** it is the first release whose `OpenAPIScanner` emits module IDs in apcore's Canonical ID alphabet, and FR-OPENAPI-002 registers what the scanner emits with no projection of the bridge's own — below 0.13.0 a camelCase or hyphenated `operationId` would reach the registry verbatim and be refused. apcore 0.31.0 is also forced transitively: apcore-toolkit 0.12.0 and 0.13.0 both require it. The paragraph below records the floors' history as of 0.20.0.
+**apcore 0.32.0 compatibility:** ErrorMapper reads canonical JSON Pointer `path`
+before legacy `field` and preserves `{path, keyword, message}` entries in the wire
+`details`. The Python MCP factory reads the source streaming annotation because
+apcore's MCP exporter now places streaming in `_meta`, rather than `annotations`.
+Timeout cancellation, preflight collection, gate-provider binding and logging
+redaction remain delegated to apcore.
+
+**apcore-toolkit 0.14.0 compatibility:** The bridge does not call the toolkit's
+pure-data BindingLoader, so its stricter structural validation requires no bridge
+code adaptation. Application binding files loaded by apcore must still satisfy the
+runtime loader's stricter contract. Toolkit 0.14.0 also requires apcore 0.32.0.
+
+**Historical capability floor:** Toolkit 0.13.0 first emitted OpenAPI module IDs in
+apcore's Canonical ID alphabet. FR-OPENAPI-002 registers those IDs without a bridge
+projection; below 0.13.0 camelCase or hyphenated operation IDs would be refused.
 
 The floors have four distinct justifications and shall not be collapsed into one. **apcore 0.29.0 is the correctness floor:** it closes the shape of an ACL `callers` / `targets` array at every entry point (PROTOCOL_SPEC §6.2.1), and on 0.28.0 the shapes it rejects load silently and leave the rule inert — a `deny` rule under `default_effect: allow` permits the call it names. **apcore-toolkit 0.11.0 is the capability floor:** `OpenAPIScanner` does not exist below it, and it is where the Rust `HTTPProxyRegistryWriter` stopped rejecting `HEAD` / `OPTIONS` / `TRACE` before any network call. **apcore-toolkit 0.11.1 changes no toolkit API**; it exists to raise its own apcore floor. **apcore 0.30.0 is therefore forced transitively**, and is independently required by FR-OPENAPI-007, which resolves `mcp.openapi.spec` against `Config.project_root` — an accessor 0.30.0 introduces.
 
@@ -4189,7 +4217,7 @@ apcore 0.30.0 is otherwise out of scope for this bridge: its §5.12.6 binding-di
 2. Router calls `Executor.call_async()`.
 3. Executor raises `SchemaValidationError` at pipeline step 7 (input_validation).
 4. Router catches the error, delegates to `ErrorMapper.to_mcp_error()`.
-5. ErrorMapper formats field-level errors: "Input validation failed:\n- width: Input should be a valid integer (int_type)".
+5. ErrorMapper formats field-level errors: "Schema validation failed:\n  /width: Input should be a valid integer".
 6. Router returns `CallToolResult(isError=True, content=[TextContent(text=<error_message>)])`.
 7. Client receives error response.
 
@@ -4415,7 +4443,7 @@ apcore 0.30.0 is otherwise out of scope for this bridge: its §5.12.6 binding-di
 | apcore Error | Message Format | Example |
 |-------------|----------------|---------|
 | `ModuleNotFoundError` | `"Module not found: {module_id}"` | `"Module not found: image.resize"` |
-| `SchemaValidationError` | `"Input validation failed:\n- {field}: {message} ({code})"` | `"Input validation failed:\n- width: Input should be a valid integer (int_type)"` |
+| `SchemaValidationError` | `"Schema validation failed:\n  {path}: {message}"` | `"Schema validation failed:\n  /width: Input should be a valid integer"` |
 | `ACLDeniedError` | `"Access denied"` | `"Access denied"` |
 | `ModuleTimeoutError` | `"Module timed out after {timeout_ms}ms"` | `"Module timed out after 30000ms"` |
 | `InvalidInputError` | `"Invalid input: {message}"` | `"Invalid input: module_id must be non-empty"` |

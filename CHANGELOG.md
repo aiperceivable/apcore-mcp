@@ -8,6 +8,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.3] - 2026-10-09
+
+### Dependency upgrade — apcore 0.32.0 / apcore-toolkit 0.14.0
+
+- Align all three SDK package versions at **0.22.3**.
+
+- Raise all three SDK dependency floors to apcore 0.32.0 and apcore-toolkit 0.14.0;
+  refresh the TypeScript lockfile and Rust's untracked local resolution.
+- **Code adaptation required in all three SDKs:** ErrorMapper previously read only
+  `field`, but apcore 0.32.0 canonicalizes validation diagnostics to
+  `{path, keyword, message}` (D-149). It now prefers JSON Pointer `path`, displays
+  the empty root pointer as `<root>`, retains pointer escaping and the legacy
+  `field` fallback, and passes all structured details through unchanged.
+- **Additional Python adaptation:** apcore's MCP exporter moved streaming hints
+  from `annotations` to `_meta` (D-140). The factory now reads the source module
+  annotation, matching TypeScript and Rust, so `_meta.streaming` is preserved.
+- **No toolkit-specific code adaptation:** toolkit 0.14.0 changes its pure-data
+  BindingLoader, which no bridge calls. OpenAPI scanner, proxy writer, Markdown,
+  CSV and JSONL APIs remain compatible. Application binding files handled by
+  apcore must satisfy its stricter unknown-key and schema-pair validation.
+- apcore's governance binding/configuration hardening, redacted logging,
+  invocation-owned timeout cancellation and collect-all preflight behavior remain
+  delegated upstream. No bridge compatibility shim is needed for those changes.
+- Align TypeScript's declared Node.js minimum and CI with the dependencies' Node.js
+  20 requirement. Synchronize current dependency requirements and ErrorMapper docs.
+- Full suites using the exact published dependency versions: **Python 1062 passed,
+  0 failed; TypeScript 823 passed, 0 failed; Rust 1117 passed, 0 failed, 1 existing
+  ignored doc test**. JSON Pointer regressions cover nested/escaped paths, the root
+  object, `/` as an empty property name, precedence over legacy fields, null and
+  non-string path fallbacks, and unchanged structured details.
+
+
+### Previously shipped OpenAPI alignment
+
 Adopts apcore-toolkit 0.13.0, whose `OpenAPIScanner` now emits module IDs in apcore's Canonical ID
 alphabet itself, and removes the module-ID projection the OpenAPI Backend carried to compensate.
 Affects all three bridges.

@@ -528,7 +528,7 @@ exists to avoid.
 
 ### Dependencies
 
-- **apcore-toolkit >= 0.13.0** — `load_spec`, `OpenAPIScanner`, `derive_module_id`,
+- **apcore-toolkit >= 0.14.0** — `load_spec`, `OpenAPIScanner`, `derive_module_id`,
   `HTTPProxyRegistryWriter`. **0.13.0** is the correctness floor: it is the first release whose
   scanner emits module IDs in apcore's Canonical ID alphabet, and the bridge — which no longer
   projects IDs itself — registers what the scanner emits. Below it a camelCase or hyphenated
@@ -537,7 +537,7 @@ exists to avoid.
   `HEAD` / `OPTIONS` / `TRACE` before any network call. **0.11.1** changed no toolkit API; it raised
   its own apcore floor to 0.30.0, which is why this bridge's apcore floor moved with it.
 - **`httpx` / a fetch implementation** — for the spec fetch and for the proxy itself.
-- **apcore >= 0.30.0** — the registration and governance surface (see
+- **apcore >= 0.32.0** — the registration and governance surface (see
   [ACL Builder](./acl-builder.md)), plus `Config.project_root`, which 0.30.0 introduces and which
   `mcp.openapi.spec` resolves a relative path against.
 
@@ -546,7 +546,7 @@ exists to avoid.
     dependency in TypeScript and Rust. This feature adds a Python extra:
 
     ```toml
-    openapi = ["apcore-toolkit[http-proxy]>=0.13.0"]
+    openapi = ["apcore-toolkit[http-proxy]>=0.14.0"]
     ```
 
     `[http-proxy]` pulls `httpx`, which both `load_spec` and the proxy need. YAML specs need no

@@ -60,7 +60,12 @@ graph LR
 ## Key Behaviors
 
 ### Structured Validation Feedback
-For `SchemaValidationError`, the mapper generates a multi-line, bulleted summary showing each failed field, its error code, and its human-readable message.
+For `SchemaValidationError`, the mapper generates an indented summary of each error's location
+and human-readable message. apcore 0.32.0 uses `{path, keyword, message}`: `path` is an RFC 6901
+JSON Pointer and takes precedence over the legacy `field` key. An empty pointer identifies the
+root object and is displayed as `<root>`; nested pointers and `~0` / `~1` escaping are retained
+verbatim. If no string `path` is present, the mapper falls back to `field`, then `unknown`.
+The original `details.errors` entries, including `keyword`, are passed through unchanged.
 
 ### AI Guidance Metadata
 If an error object carries guidance attributes (`retryable`, `ai_guidance`, `user_fixable`, `suggestion`), the mapper extracts these and attaches them to the response, often as a JSON appendix in the error text content to ensure visibility for LLMs.
