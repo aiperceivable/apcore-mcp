@@ -136,7 +136,7 @@ Approval gate identically whether it is discovered via `tools/list` or invoked d
 that already knows its name from this extension's contract.
 
 Declaring this extension does **not** imply an ACL rule exists that permits reaching any of these
-modules — see [`acl-builder`](../../README.md) rule-template guidance
+modules — see [`acl-builder`](https://github.com/aiperceivable/apcore-mcp/blob/main/README.md) rule-template guidance
 (aiperceivable/apcore-mcp#14) for the ACL configuration that actually gates this surface.
 
 ## Degradation behavior

@@ -943,6 +943,8 @@ class AnnotationMapper:
 
 **File:** `src/apcore_mcp/server/router.py`
 
+For the next SDK release, the factory derives optional structured results from the router's already-redacted JSON text and validates them against any advertised output schema. The router's public return shape remains unchanged. See the [structured tool result contract](features/mcp-server-factory.md#structured-tool-results-next-sdk-release).
+
 **Responsibility:** Receive MCP tool call requests (tool name + arguments dict) and route them through `Executor.call_async()`. Return the call-result tuple `(content, is_error, trace_id)`, mapping errors via `ErrorMapper`. The MCP SDK handler registered by `MCPServerFactory` renders that tuple as the protocol-level `CallToolResult`; the router never constructs one itself.
 
 **Public API:**
@@ -1246,7 +1248,7 @@ class MCPServerFactory:
             descriptor.metadata["display"]["mcp"]["alias"] or descriptor.module_id  -> Tool.name
             descriptor.metadata["display"]["mcp"]["description"] (+ guidance suffix) or descriptor.description  -> Tool.description
             descriptor.input_schema    -> Tool.inputSchema (after $ref inlining)
-            descriptor.output_schema   -> Tool.outputSchema (after $ref inlining)
+            descriptor.output_schema   -> Tool.outputSchema (object-root schemas; preserve constraints and references; next SDK release)
             descriptor.annotations     -> Tool.annotations (via AnnotationMapper)
 
         Args:

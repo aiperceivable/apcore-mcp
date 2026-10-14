@@ -74,6 +74,89 @@ If building a tool for one module fails (e.g., due to a malformed schema), the f
 ### Identity Reporting
 The factory ensures that the server correctly identifies itself to clients with a configurable name and version (e.g., `apcore-mcp v1.0.0`).
 
+### Structured Tool Results (next SDK release)
+
+This contract applies to the coordinated Python, TypeScript, and Rust SDK changes
+tracked in [Python #9](https://github.com/aiperceivable/apcore-mcp-python/issues/9),
+[TypeScript #11](https://github.com/aiperceivable/apcore-mcp-typescript/issues/11),
+and [Rust #10](https://github.com/aiperceivable/apcore-mcp-rust/issues/10). The
+three SDK versions are prepared as `0.23.0`. Publication also requires the
+referenced-sensitive-field fixes in the core dependencies ([Python #35](https://github.com/aiperceivable/apcore-python/issues/35),
+[TypeScript #38](https://github.com/aiperceivable/apcore-typescript/issues/38),
+and [Rust #41](https://github.com/aiperceivable/apcore-rust/issues/41)). These
+changes are pending SDK release; installing an earlier published version does
+not enable them.
+
+- For connections using MCP `2025-06-18` or a later supported version, synchronous
+  tools with an object-root output schema advertise `outputSchema`. Preserve the
+  descriptor's JSON Schema, including references and validation constraints;
+  input-schema strict conversion must not weaken the output contract.
+- Tool output schemas are snapshots: later mutation of the source descriptor
+  must not change an already-built tool. Async string hints are normalized by
+  trimming whitespace and comparing case-insensitively with `true`.
+- An async task submission wrapper does not advertise the final module output
+  schema, because its immediate result is a task receipt. Arrays, scalars, and
+  schemas without an explicit object root do not advertise an object schema.
+- For a successful result whose primary text item represents a JSON
+  object, the factory adds `structuredContent` from that already-redacted text.
+  Decoding the primary text must produce the same object; preserve additional
+  text items, including trace output. Do not execute the module
+  twice or bypass ACL, approval, middleware, formatting, or redaction.
+- Validate structured data against any advertised output schema **after
+  redaction**. If masking changes a constrained value so that it no longer
+  satisfies the schema, return `isError: true`, a payload-free diagnostic, and no
+  structured payload. Never attach the original or rejected value to the error.
+- Raw schema validation must preserve local reference siblings, anchors, and
+  composition constraints according to the declared dialect (2020-12 by default).
+  Formats remain annotations; validation must not coerce values, inject defaults,
+  remove properties, or fetch external HTTP/file schemas. Unresolved references
+  produce a payload-free schema error, including unresolved references in inactive
+  branches or unused schema definitions. Literal `const`, `default`, and `examples`
+  data are not traversed as schemas. Non-finite decoded numbers cannot become
+  structured JSON. Schema errors omit arbitrary result metadata as well as the
+  rejected payload.
+- The common output-validation subset is Draft-07, Draft 2019-09 and Draft
+  2020-12, with 2020-12 when no draft is declared. A repeated declaration of the
+  same draft is allowed; mixed-draft embedded schemas and other declared drafts
+  fail closed. Never reinterpret a nested resource under a different draft.
+- Only promote numeric tokens when the runtime can preserve their exact decimal
+  value through parsing and JSON serialization. Rounded numbers and nonzero
+  underflow become a payload-free error with an advertised schema, or remain
+  unchanged text without one. Runtime integer ranges differ; applications needing
+  portable arbitrary-size identifiers should model them as JSON strings.
+- Existing execution errors retain their error result and omit `structuredContent`.
+  Arrays, scalars, and custom non-JSON primary text retain text-only
+  success only when no object schema is advertised. A result that cannot provide
+  a conforming object for an advertised schema is a payload-free schema error.
+- MCP `2024-11-05` and `2025-03-26` clients receive the existing wire format:
+  neither `outputSchema` nor `structuredContent` is sent. Preserve content,
+  `isError`, and existing `_meta` trace information.
+- Use protocol state owned by the MCP server/session. Streamable HTTP uses the
+  per-request `MCP-Protocol-Version` header; an absent header follows the MCP
+  legacy default. Caller-supplied `_meta` cannot enable structured output or
+  forge a connection's negotiated protocol. Invalid protocol headers are
+  rejected by the transport.
+
+For TypeScript, `registerHandlers` works with both factory-created and caller-supplied
+MCP `Server` instances through public transport observation. Register handlers before
+initialization so the negotiated version is observable; connecting the transport
+before registration is supported if initialization has not happened yet.
+A rejected additional connection must preserve the active connection's negotiated
+version and result capabilities.
+
+The prepared Rust SDK negotiates `2024-11-05`, `2025-03-26`, and `2025-06-18`.
+Python and TypeScript can also negotiate newer versions supported by their
+upstream SDKs. Compare field behavior within the shared supported versions;
+unknown versions negotiate a supported fallback rather than claiming support.
+
+Public `ExecutionRouter.handle_call` return shapes are unchanged. The factory
+adapts the router result into the protocol `CallToolResult`; Rust's optional
+`Tool.output_schema` and `CallToolResult.structured_content` fields require
+`None` in existing struct literals when upgrading.
+
+See the normative [MCP tool result contract](https://modelcontextprotocol.io/specification/2025-06-18/server/tools)
+and [HTTP protocol version contract](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports).
+
 ### Custom Middleware Injection
 The public `serve()` entry point accepts an optional user-supplied middleware list:
 
@@ -365,6 +448,7 @@ the Custom Adapter Hooks note above.
 
 ### Returns
 - On success: None — side effect: registers list_tools and call_tool handlers on the server; identity is propagated from ContextVar/AsyncLocalStorage into the tool execution context
+- For the next SDK release, handlers apply the negotiated-version and post-redaction output-schema contract in [Structured Tool Results](#structured-tool-results-next-sdk-release).
 
 ### Properties
 - async: false

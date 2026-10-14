@@ -76,6 +76,13 @@ When the server is constructed with an `ExtensionManager` (see `./extension-brid
 The router's contract with extensions is strictly pass-through: it forwards the current `Context` and arguments into the Executor and never skips pipeline steps, so registered extensions always fire exactly once per tool call.
 
 ### Output Redaction
+
+The pending core dependency fixes must honor `x-sensitive` through local schema
+references, including nested arrays, composition branches and recursive data.
+The MCP bridge uses the core redactor; it must not duplicate reference-redaction
+logic in the adapter. Validate the resulting redacted object against the exact
+advertised output schema before publishing structured results.
+
 Before the output is sent to the AI agent, the router applies recursive redaction. Any field with `x-sensitive: true` in its schema or any key starting with `_secret_` has its value replaced by `"***REDACTED***"`.
 
 ### Async-First Strategy

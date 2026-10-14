@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-10-14
+
+Prepared locally; the three SDK releases follow apcore 0.32.1 and the dependency-floor update.
+
+### Added
+
+- Document synchronous MCP structured results with optional output schemas, validation after redaction, and legacy wire compatibility across Rust, Python and TypeScript SDKs.
+- Document MCP 2025-06-18 negotiation and transport-specific session handling.
+
+### Fixed
+
+- Specify local-only schema reference validation, supported dialect handling, and rejection of unrepresentable structured JSON values.
+
 ## [0.22.3] - 2026-10-09
 
 ### Dependency upgrade — apcore 0.32.0 / apcore-toolkit 0.14.0

@@ -3912,3 +3912,53 @@ NNN = Zero-padded sequential number (001, 002, ...)
 ---
 
 *End of Test Plan & Test Cases Document*
+
+
+## Structured Tool Result Compatibility (next SDK release)
+
+These scenarios apply to all three SDKs and implement the
+[structured tool result contract](features/mcp-server-factory.md#structured-tool-results-next-sdk-release).
+Test through registered factory handlers and actual negotiated transports where
+available; a helper-only assertion does not establish wire compatibility.
+
+| Scenario | Expected result |
+|---|---|
+| June-or-later supported connection, synchronous object schema and result | `tools/list.outputSchema` preserves the descriptor schema; `structuredContent` equals decoded JSON text |
+| November 2024 or March 2025 connection | Both optional fields absent; original text, `isError`, and trace metadata preserved |
+| Sensitive output property or `_secret_*` key | Both text and structured data contain only masked values |
+| Sensitive field constrained by `const`/`enum`/type rejects the mask | Payload-free `isError: true`; no structured or rejected payload |
+| Invalid object result or non-object result with advertised object schema | Payload-free schema error |
+| Array/scalar result with no advertised object schema | Existing text-only success |
+| Custom non-JSON primary formatter or empty content | With no object schema, preserve text; with an advertised object schema, return a payload-free schema error |
+| Valid primary object text plus additional trace text | Structured data matches the primary text; all extra text and metadata are preserved |
+| Existing executor/ACL/input error | Existing tool error; no structured success payload |
+| Async-hinted module | No final-output schema advertised on its task submission wrapper |
+| HTTP requests with different protocol headers | Field availability follows each request, without state leaking between requests |
+| Forged body `_meta` protocol/session values | Cannot override server/session state or HTTP header |
+| Unsupported or malformed HTTP protocol header | Transport rejects the request |
+| No HTTP protocol header | Legacy protocol default and text-only format |
+| Object schema with local references or composition constraints | Schema unchanged and result validated against all constraints |
+| Descriptor schema mutated after tool construction | Already-built schema snapshot unchanged |
+| Host replaces the output schema of an exposed mutable Python/TypeScript Tool | Calls validate the currently advertised schema; no stale validator/cache. Rust registration owns its immutable Tool snapshot |
+| Exponent overflow in nested JSON numbers | Never emit Infinity/NaN as structured JSON; schema errors contain no payload |
+| External or missing references, including inactive branches and unused schema definitions | No HTTP/file retrieval; unresolved schema fails closed |
+| Literal `const`/`default`/`examples` values containing a `$ref` key | Preserve data semantics; do not interpret these values as schemas |
+| Unknown declared schema dialect | Payload-free schema error; no silent default fallback |
+| Local pointer, anchor, absolute self-reference, or recursive sensitive field | Preserve validation and apply core redaction without leaking the value |
+| Draft-07 versus 2020-12 reference assertion siblings | Respect the declared dialect |
+| Existing error or custom result with stale structured data | No stale structured payload retained |
+| Caller-supplied TypeScript Server | Same modern/legacy result behavior as factory-created Server |
+| GET/POST/DELETE with invalid protocol version | Uniform HTTP 400 rejection |
+| Async hint with whitespace or mixed case | Same async classification and final-schema omission across languages |
+
+| Embedded schema declares another supported draft | Reject mixed-draft validation; repeated same-draft declaration succeeds |
+| Declared Draft-03/04/06 or another unsupported draft | Payload-free schema error across the common supported subset |
+| Unused external `$dynamicRef`/`$recursiveRef` under its effective draft | Reject without network/file retrieval |
+| Numeric literal loses decimal value during parse/encode, including underflow | Advertised schema: payload-free error; no schema: unchanged text only |
+| Escaped strings containing digits and equivalent scientific numeric forms | Preserve string values and numerically unchanged structured output |
+| TypeScript second connect fails while a June connection is active | Original session still advertises and returns structured fields |
+| Draft-07 plain-name fragment `$id` anchor marks a sensitive field | Redact the referenced field without retrieving a resource |
+| Draft-07/2019-09 unknown `prefixItems` plus dictionary `items` | Ignore the unknown keyword; apply the item schema to every position |
+| Unknown vocabulary contains a colliding resource/anchor | It cannot shadow real schema definitions or weaken redaction |
+| Object root carries `x-sensitive` | Preserve the object-return contract; sensitivity is applied to nested fields |
+| Python JSON parser exceeds supported recursion depth | Advertised schema: payload-free error; no schema: unchanged text only |

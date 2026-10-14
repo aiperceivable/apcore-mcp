@@ -103,7 +103,7 @@ apcore-mcp does NOT reimplement the MCP protocol (it uses the official `mcp` Pyt
 | **$ref inlining** | The process of resolving JSON Schema `$ref` references by substituting the referenced definition in-place and removing the `$defs` section. |
 | **Module ID normalization** | Converting apcore module IDs (dot-notation, e.g., `image.resize`) to OpenAI-compatible function names (e.g., `image-resize`) by replacing `.` with `-`. |
 | **xxx-apcore** | Convention for apcore adapter projects targeting specific domains: `comfyui-apcore`, `vnpy-apcore`, `blender-apcore`, etc. |
-| **CallToolResult** | MCP SDK type representing the result of a tool call, containing `content` (list of content items) and `isError` (boolean). This is the **protocol-level** result the MCP client observes. The bridge's own components never construct it — the MCP SDK server layer does, from the call-result tuple below. |
+| **CallToolResult** | MCP SDK type representing the result of a tool call, containing `content` (list of content items) and `isError` (boolean). This is the **protocol-level** result the MCP client observes. The factory handler constructs it from the call-result tuple below. The next SDK release optionally adds `structuredContent` for supported negotiated protocol versions. |
 | **Call-result tuple** | What `ExecutionRouter.handle_call()` actually returns: `(content, is_error, trace_id)` — `content` a list of `{"type": "text", "text": str}` dicts, `is_error` a bool, `trace_id` a string or None. The MCP SDK handler registered by `MCPServerFactory` turns the first two into a `CallToolResult`. Wherever this SRS says handle_call "returns a CallToolResult", read it as "produces the tuple the SDK renders as that CallToolResult". |
 | **Error response dict** | What `ErrorMapper.to_mcp_error()` returns: a plain dict with `isError`, `errorType`, `message`, `details`, and the AI-guidance keys `retryable` / `aiGuidance` / `userFixable` / `suggestion` (camelCase on the wire). It is not an MCP SDK object; the router lifts `message` into the content items. |
 | **TextContent** | MCP SDK type for text-based content items within a CallToolResult. |
@@ -4411,7 +4411,7 @@ apcore 0.30.0 is otherwise out of scope for this bridge: its §5.12.6 binding-di
 | `name` | `str` | `ModuleDescriptor.module_id` | MCP tool name, equals the apcore module ID (dot notation preserved) |
 | `description` | `str` | `ModuleDescriptor.description` | Human-readable tool description |
 | `inputSchema` | `dict[str, Any]` | `ModuleDescriptor.input_schema` after $ref inlining | JSON Schema for tool input parameters |
-| `outputSchema` | `dict[str, Any]` | `ModuleDescriptor.output_schema` after $ref inlining | JSON Schema for tool output (optional) |
+| `outputSchema` | `dict[str, Any]` | Object-root `ModuleDescriptor.output_schema`, preserving references and constraints | Optional; next SDK release, modern clients and synchronous tools only |
 | `annotations` | `ToolAnnotations` | `ModuleDescriptor.annotations` via AnnotationMapper | Behavioral hints: `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint` |
 
 ### 7.2 OpenAI Tool Definition
@@ -4430,6 +4430,9 @@ apcore 0.30.0 is otherwise out of scope for this bridge: its §5.12.6 binding-di
 |-------|------|-------|-------------|
 | `content` | `list[TextContent]` | `[TextContent(type="text", text=<json_output>)]` | JSON-serialized module output |
 | `isError` | `bool` | `False` | Indicates success |
+| `structuredContent` | `dict[str, Any]` | Decoded already-redacted JSON text | Optional; next SDK release, modern clients only; must conform to advertised `outputSchema` |
+
+The next SDK release follows the complete [structured tool result contract](features/mcp-server-factory.md#structured-tool-results-next-sdk-release). Legacy clients receive no new fields. Validation failures after redaction become payload-free tool errors, including when a sensitive field's `const`, `enum`, or type no longer accepts the redaction marker.
 
 ### 7.4 MCP CallToolResult (Error)
 

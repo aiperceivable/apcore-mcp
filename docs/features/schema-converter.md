@@ -68,13 +68,13 @@ A key written beside `$ref` (e.g. `{"$ref": "#/$defs/Token", "x-sensitive": true
 - A chained `$ref` (one `$defs` entry pointing at another) carries siblings contributed at each hop, with the outermost sibling winning on conflict.
 - This does **not** change error behavior: a `$ref` naming a definition absent from `$defs` still raises (`KeyError` / `Definition not found`); sibling merging only applies once a reference resolves.
 
-This mirrors the identical fix landed in apcore 0.31.0 (decision D-98/D-124) and apcore-toolkit 0.12.0's `deep_resolve_refs` — this converter is an independent implementation with no shared code path, so it carried the same latent defect and needed the same fix applied separately. Conformance: [`schema_converter.json`](../../conformance/fixtures/schema_converter.json).
+This mirrors the identical fix landed in apcore 0.31.0 (decision D-98/D-124) and apcore-toolkit 0.12.0's `deep_resolve_refs` — this converter is an independent implementation with no shared code path, so it carried the same latent defect and needed the same fix applied separately. Conformance: [`schema_converter.json`](https://github.com/aiperceivable/apcore-mcp/blob/main/conformance/fixtures/schema_converter.json).
 
 ### Root Object Guarantee
 If a schema is empty (`{}`), it is normalized to `{"type": "object", "properties": {}}`. If it lacks a `type` but has `properties`, `type: object` is added.
 
 ### Output Schema Handling
-`output_schema` is converted for use in structured tool results. Unlike `input_schema`, an empty `output_schema` results in an empty dict `{}` as no input parameters are expected.
+`convert_output_schema` remains available for callers that need an inlined schema; an empty output schema returns `{}` and promises no output shape. For the next SDK release, MCP tool advertisement preserves the descriptor's original object-root output schema, including references and validation constraints, rather than applying input strict-mode conversion. See the [structured tool result contract](mcp-server-factory.md#structured-tool-results-next-sdk-release).
 
 ## Constraints
 
