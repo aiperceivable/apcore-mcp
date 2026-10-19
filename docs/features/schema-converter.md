@@ -12,6 +12,11 @@ description: "Schema Converter feature spec: inlines $ref/$defs from apcore Pyda
 
 The Schema Converter is responsible for transforming apcore JSON Schema definitions (produced by Pydantic) into clean, compatible schemas suitable for MCP `inputSchema` and OpenAI `parameters`. It ensures that all internal references are resolved and that the resulting schema follows the strict requirements of AI tool-use protocols.
 
+MCP factories use the descriptor's runtime schema directly rather than this explicit
+conversion utility. See the [factory input contract](mcp-server-factory.md#mcp-input-schema-contract)
+for discovery semantics; the conversion APIs documented below remain available to
+callers that explicitly request their transformations.
+
 ## Scope
 
 **Included:**
@@ -88,14 +93,20 @@ If a schema is empty (`{}`), it is normalized to `{"type": "object", "properties
 - **Missing Definition**: Raises `KeyError` if a `$ref` points to a missing key in `$defs`.
 - **Max Depth Exceeded**: Raises `ValueError` if the 32-level recursion limit is reached.
 
-## Strict Mode for MCP
+<a id="strict-mode-for-mcp"></a>
 
-The Schema Converter exposes a `strict` option that tightens the converted JSON Schema for MCP clients without breaking MCP's permissive posture.
+## Explicit Converter Strict Mode
+
+The standalone SchemaConverter exposes a `strict` option for callers explicitly
+requesting an inlined, restricted schema. MCPServerFactory does not call this
+converter for tool input discovery: it preserves the runtime schema directly.
+See the [MCP input contract](mcp-server-factory.md#mcp-input-schema-contract).
+Existing converter and OpenAI-export APIs retain their transformation behavior.
 
 ### Per-SDK Defaults
 - Python (`SchemaConverter(strict=True)`) — default `True`.
 - TypeScript (`convertInputSchema(descriptor, { strict })`) — option is optional and defaults to **`true`** at the converter level (`schema.ts:77`, the [SC-11] alignment fix); callers that want permissive schemas must pass `{ strict: false }` explicitly. An earlier revision of this spec said the default was `false`; it is not.
-- Rust (`SchemaConverter::convert_input_schema_strict(schema, strict)`) — strict is an explicit parameter; the default constructor path uses strict mode, and the factory invokes the strict variant.
+- Rust (`SchemaConverter::convert_input_schema_strict(schema, strict)`) — strict is an explicit parameter; the default converter path uses strict mode. The MCP factory does not invoke this conversion.
 
 ### What Strict Injects
 When enabled, strict recursively walks the schema and sets `additionalProperties: false` on every JSON Schema node that is one of:
@@ -104,7 +115,7 @@ When enabled, strict recursively walks the schema and sets `additionalProperties
 - or a schema that declares `properties` without an explicit `type`.
 
 ### What Strict Does NOT Do
-Unlike apcore's core `to_strict_schema`, the MCP-side strict mode does **not** force every property to be `required` and does **not** rewrite optional fields to be `nullable`. This preserves MCP's permissive posture (optional fields stay optional, absent fields stay absent) while still blocking unknown keys.
+Unlike apcore's core `to_strict_schema`, the MCP-side strict mode does **not** force every property to be `required` and does **not** rewrite optional fields to be `nullable`. Optional fields stay optional under this explicit converter transform, but injected unknown-key restrictions can still narrow the runtime schema. It is therefore not the MCP factory's discovery path.
 
 ### Preservation Rules
 User-set `additionalProperties` values (whether `true`, `false`, or a subschema) are always preserved — strict mode never overwrites an existing declaration. Injection only occurs when the key is absent.

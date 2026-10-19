@@ -1,0 +1,526 @@
+{
+  "contract_version": "1.0",
+  "description": "Issue #20: MCP discovery, preflight and execution preserve the module input contract. No OpenAI strict projection, null removal, default removal, reference inlining or additionalProperties injection. Each sample runs with validate_inputs on and off through real Registry and Executor instances in all three SDKs.",
+  "schema_cases": [
+    {
+      "id": "optional_default",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "default": 7
+          }
+        }
+      },
+      "samples": [
+        {
+          "id": "omitted",
+          "arguments": {},
+          "valid": true
+        },
+        {
+          "id": "integer",
+          "arguments": {
+            "limit": 3
+          },
+          "valid": true
+        },
+        {
+          "id": "null_placeholder",
+          "arguments": {
+            "limit": null
+          },
+          "valid": false
+        }
+      ]
+    },
+    {
+      "id": "nullable_default",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "default": 7
+          }
+        }
+      },
+      "samples": [
+        {
+          "id": "omitted",
+          "arguments": {},
+          "valid": true
+        },
+        {
+          "id": "explicit_null",
+          "arguments": {
+            "limit": null
+          },
+          "valid": true
+        },
+        {
+          "id": "integer",
+          "arguments": {
+            "limit": 9
+          },
+          "valid": true
+        }
+      ]
+    },
+    {
+      "id": "required_nullable",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "limit"
+        ]
+      },
+      "samples": [
+        {
+          "id": "missing",
+          "arguments": {},
+          "valid": false
+        },
+        {
+          "id": "present_null",
+          "arguments": {
+            "limit": null
+          },
+          "valid": true
+        }
+      ]
+    },
+    {
+      "id": "free_form_root",
+      "input_schema": {
+        "type": "object"
+      },
+      "samples": [
+        {
+          "id": "arbitrary_keys",
+          "arguments": {
+            "unknown": {
+              "nested": [
+                1,
+                null,
+                {
+                  "x": true
+                }
+              ]
+            }
+          },
+          "valid": true
+        },
+        {
+          "id": "empty",
+          "arguments": {},
+          "valid": true
+        }
+      ]
+    },
+    {
+      "id": "free_form_payload",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "payload": {
+            "type": "object"
+          }
+        }
+      },
+      "samples": [
+        {
+          "id": "arbitrary_keys",
+          "arguments": {
+            "payload": {
+              "name": "x",
+              "nested": {
+                "optional": null
+              }
+            }
+          },
+          "valid": true
+        }
+      ]
+    },
+    {
+      "id": "nested_tasks",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "tasks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "limit": {
+                  "type": "integer",
+                  "default": 7
+                },
+                "nullable": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "default": 11
+                },
+                "payload": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          }
+        }
+      },
+      "samples": [
+        {
+          "id": "optional_omitted",
+          "arguments": {
+            "tasks": [
+              {
+                "name": "one"
+              }
+            ]
+          },
+          "valid": true
+        },
+        {
+          "id": "explicit_nullable",
+          "arguments": {
+            "tasks": [
+              {
+                "name": "one",
+                "nullable": null,
+                "payload": {
+                  "extra": "kept"
+                }
+              }
+            ]
+          },
+          "valid": true
+        },
+        {
+          "id": "invalid_null",
+          "arguments": {
+            "tasks": [
+              {
+                "name": "one",
+                "limit": null
+              }
+            ]
+          },
+          "valid": false
+        },
+        {
+          "id": "missing_required",
+          "arguments": {
+            "tasks": [
+              {}
+            ]
+          },
+          "valid": false
+        }
+      ]
+    },
+    {
+      "id": "closed_object",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "samples": [
+        {
+          "id": "valid",
+          "arguments": {
+            "name": "one"
+          },
+          "valid": true
+        },
+        {
+          "id": "extra_rejected",
+          "arguments": {
+            "name": "one",
+            "extra": 1
+          },
+          "valid": false
+        },
+        {
+          "id": "missing_required",
+          "arguments": {},
+          "valid": false
+        }
+      ]
+    },
+    {
+      "id": "typed_extra_properties",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "integer"
+        }
+      },
+      "samples": [
+        {
+          "id": "valid_extra",
+          "arguments": {
+            "one": 1
+          },
+          "valid": true
+        },
+        {
+          "id": "invalid_extra",
+          "arguments": {
+            "one": null
+          },
+          "valid": false
+        }
+      ]
+    },
+    {
+      "id": "local_references",
+      "input_schema": {
+        "type": "object",
+        "$defs": {
+          "limit": {
+            "type": "integer",
+            "default": 7
+          }
+        },
+        "properties": {
+          "limit": {
+            "$ref": "#/$defs/limit"
+          }
+        }
+      },
+      "samples": [
+        {
+          "id": "omitted",
+          "arguments": {},
+          "valid": true
+        },
+        {
+          "id": "integer",
+          "arguments": {
+            "limit": 3
+          },
+          "valid": true
+        },
+        {
+          "id": "null_rejected",
+          "arguments": {
+            "limit": null
+          },
+          "valid": false
+        }
+      ]
+    },
+    {
+      "id": "empty_schema",
+      "input_schema": {},
+      "samples": [
+        {
+          "id": "free_form",
+          "arguments": {
+            "payload": {
+              "key": "value"
+            }
+          },
+          "valid": true
+        },
+        {
+          "id": "empty",
+          "arguments": {},
+          "valid": true
+        }
+      ]
+    },
+    {
+      "id": "implicit_object",
+      "input_schema": {
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "default": 7
+          }
+        }
+      },
+      "samples": [
+        {
+          "id": "omitted",
+          "arguments": {},
+          "valid": true
+        },
+        {
+          "id": "null_rejected",
+          "arguments": {
+            "limit": null
+          },
+          "valid": false
+        }
+      ]
+    }
+  ],
+  "root_schema_cases": [
+    {
+      "id": "empty",
+      "input_schema": {},
+      "accepted": true
+    },
+    {
+      "id": "implicit_object",
+      "input_schema": {
+        "properties": {}
+      },
+      "accepted": true
+    },
+    {
+      "id": "object",
+      "input_schema": {
+        "type": "object"
+      },
+      "accepted": true
+    },
+    {
+      "id": "nullable_object",
+      "input_schema": {
+        "type": [
+          "object",
+          "null"
+        ]
+      },
+      "accepted": true
+    },
+    {
+      "id": "object_string_union",
+      "input_schema": {
+        "type": [
+          "string",
+          "object"
+        ]
+      },
+      "accepted": true
+    },
+    {
+      "id": "string",
+      "input_schema": {
+        "type": "string"
+      },
+      "accepted": false
+    },
+    {
+      "id": "number",
+      "input_schema": {
+        "type": "number"
+      },
+      "accepted": false
+    },
+    {
+      "id": "integer",
+      "input_schema": {
+        "type": "integer"
+      },
+      "accepted": false
+    },
+    {
+      "id": "boolean",
+      "input_schema": {
+        "type": "boolean"
+      },
+      "accepted": false
+    },
+    {
+      "id": "array",
+      "input_schema": {
+        "type": "array"
+      },
+      "accepted": false
+    },
+    {
+      "id": "null",
+      "input_schema": {
+        "type": "null"
+      },
+      "accepted": false
+    },
+    {
+      "id": "non_object_union",
+      "input_schema": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "accepted": false
+    },
+    {
+      "id": "empty_type_union",
+      "input_schema": {
+        "type": []
+      },
+      "accepted": false
+    },
+    {
+      "id": "null_type_keyword",
+      "input_schema": {
+        "type": null
+      },
+      "accepted": false
+    },
+    {
+      "id": "invalid_union_member",
+      "input_schema": {
+        "type": [
+          "object",
+          42
+        ]
+      },
+      "accepted": false
+    },
+    {
+      "id": "unknown_union_member",
+      "input_schema": {
+        "type": [
+          "object",
+          "unknown"
+        ]
+      },
+      "accepted": false
+    },
+    {
+      "id": "duplicate_union_member",
+      "input_schema": {
+        "type": [
+          "object",
+          "object"
+        ]
+      },
+      "accepted": false
+    }
+  ]
+}

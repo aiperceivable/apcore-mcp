@@ -15,7 +15,7 @@ description: "Auto-generated index of all apcore-mcp feature specs with dependen
 | [Annotation Mapper](./annotation-mapper.md) | Maps apcore metadata to protocol behavioral hints. | none | released-v0.14.0 |
 | [Execution Router](./execution-router.md) | Dispatches tool calls to the apcore Executor pipeline. | error-mapper | released-v0.14.0 |
 | [Error Mapper](./error-mapper.md) | Translates exceptions to protocol-compliant errors. | none | released-v0.14.0 |
-| [MCP Server Factory](./mcp-server-factory.md) | Builds the low-level MCP server instance. | schema-converter, annotation-mapper, execution-router | released-v0.14.0 |
+| [MCP Server Factory](./mcp-server-factory.md) | Builds the low-level MCP server instance. | annotation-mapper, execution-router | released-v0.14.0 |
 | [OpenAI Converter](./openai-converter.md) | Exports modules as OpenAI-compatible tool definitions. | schema-converter, annotation-mapper | released-v0.14.0 |
 | [Extension Bridge](./extension-bridge.md) | Wires apcore ExtensionManager into the MCP server pipeline. | mcp-server-factory, execution-router | released-v0.14.0 (`apply()` portion deferred — EB-1) |
 | [Transport Manager](./transport-manager.md) | Manages stdio and network communication layers. | mcp-server-factory | released-v0.14.0 |

@@ -742,6 +742,8 @@ src/apcore_mcp/
 
 **Responsibility:** Convert apcore `ModuleDescriptor.input_schema` and `output_schema` (JSON Schema dicts produced by Pydantic `model_json_schema()`) into clean schemas suitable for MCP `inputSchema` and OpenAI `parameters`. The primary task is `$defs`/`$ref` inlining and ensuring the root schema has `type: object`.
 
+MCPServerFactory discovery preserves the runtime input schema directly. This standalone converter is used only by callers explicitly requesting conversion and by OpenAI export paths.
+
 **Public API:**
 
 ```python
@@ -1247,7 +1249,7 @@ class MCPServerFactory:
         Mapping:
             descriptor.metadata["display"]["mcp"]["alias"] or descriptor.module_id  -> Tool.name
             descriptor.metadata["display"]["mcp"]["description"] (+ guidance suffix) or descriptor.description  -> Tool.description
-            descriptor.input_schema    -> Tool.inputSchema (after $ref inlining)
+            descriptor.input_schema    -> Tool.inputSchema (independent copy; normalize only object root)
             descriptor.output_schema   -> Tool.outputSchema (object-root schemas; preserve constraints and references; next SDK release)
             descriptor.annotations     -> Tool.annotations (via AnnotationMapper)
 
@@ -1259,7 +1261,7 @@ class MCPServerFactory:
 
         Raises:
             ValueError: If descriptor.module_id is empty.
-            ValueError: If SchemaConverter encounters circular $ref.
+            ValueError: If the input schema declaration is not an object.
         """
 
     def build_tools(
@@ -1305,7 +1307,7 @@ class MCPServerFactory:
 ```
 
 **Error handling:**
-- `build_tool()` propagates `ValueError` from `SchemaConverter` if `$ref` resolution fails.
+- `build_tool()` copies the runtime input schema and normalizes only the MCP object root; references and defaults remain unchanged. Malformed non-object schema declarations still fail tool construction.
 - `build_tools()` catches `ValueError` per-module, logs a warning, and skips the failing module. Other modules are still registered. This ensures one malformed module does not prevent the entire server from starting.
 - `register_handlers()` does not raise; it installs async handler functions on the server.
 
@@ -2826,7 +2828,7 @@ Changes: `default` removed, `format` made required + nullable, `additionalProper
 }
 ```
 
-**MCP `inputSchema` (after $ref inlining):**
+**MCP `inputSchema` (runtime contract preserved):**
 
 ```json
 {
@@ -2834,19 +2836,23 @@ Changes: `default` removed, `format` made required + nullable, `additionalProper
   "title": "WorkflowInput",
   "properties": {
     "workflow_name": {"type": "string"},
-    "parameters": {
+    "parameters": {"$ref": "#/$defs/WorkflowParams"}
+  },
+  "required": ["workflow_name", "parameters"],
+  "$defs": {
+    "WorkflowParams": {
       "type": "object",
       "properties": {
         "seed": {"type": "integer", "default": 42},
         "steps": {"type": "integer", "default": 20}
       }
     }
-  },
-  "required": ["workflow_name", "parameters"]
+  }
 }
 ```
 
-`$defs` removed, `$ref` replaced with the inlined definition.
+References, definitions, defaults and optionality are preserved. The factory does
+not use the standalone converter's reference-inlining or strict transformations.
 
 #### Example 3: Empty input_schema
 
@@ -3039,7 +3045,7 @@ tests/
 - Module with None annotations -> Tool with default annotations
 - Module with empty description -> Tool with empty description
 - Tool name equals module_id
-- Tool inputSchema is $ref-inlined
+- Tool inputSchema preserves references and runtime constraints; explicit root types that exclude object are rejected
 - Tool filtering by tags/prefix
 
 **OpenAIConverter (10+ tests):**

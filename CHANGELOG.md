@@ -6,7 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [Unreleased]
+## [0.23.1] - 2026-10-19
+
+### Fixed — MCP object root validation
+
+- Follow-up full suites: Python 1200 passed / 0 failed; TypeScript 930 passed / 0 failed; Rust 1149 passed / 0 failed, with 1 existing ignored doc test.
+- Reject root type declarations that cannot accept object inputs instead of silently replacing them. Preserve object-containing unions, reject invalid unions, and verify discovery and preflight behavior with 17 shared root-schema cases.
+
+### Fixed — MCP input contract (#20)
+
+- Python, TypeScript and Rust MCP factories preserve the descriptor's runtime
+  input schema, normalizing only the object root and returning independent copies.
+  They no longer source OpenAI strict exports or inject additional-property
+  restrictions. Required fields, optional/defaulted fields, explicit nullable
+  values, free-form objects, references and definitions retain their semantics.
+- Routers continue forwarding arguments unchanged. No generic null removal or
+  default insertion is introduced. Existing factory strict/registry arguments
+  remain accepted for compatibility; standalone converter and OpenAI strict
+  behavior remain unchanged.
+- Shared `mcp_input_contract.json` 1.0 pins 11 schemas / 27 inputs through real
+  registry, preflight, direct execution and router paths with input validation on
+  and off. `tool_mapping.json` 2.0 pins the matching discovery schema.
+- Correct the obsolete factory claim that Rust lacks strict registry export and
+  that registry strict export and local conversion produced equivalent schemas.
+- Initial fix verification: Python 1183 passed / 0 failed; TypeScript 913 passed / 0 failed;
+  Rust 1148 passed / 0 failed, with 1 pre-existing ignored doc test. Python coverage
+  91.39%; TypeScript 85.91% (clean HEAD 85.78%, existing 90% gate remains unmet).
+
 
 ## [0.23.0] - 2026-10-14
 

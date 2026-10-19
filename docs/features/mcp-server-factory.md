@@ -19,7 +19,7 @@ The MCP Server Factory is the primary builder that constructs an MCP protocol se
 - Transformation of `ModuleDescriptor` metadata into MCP `Tool` objects.
 - Registration of core protocol handlers for tool discovery and execution.
 - Filtering of tools based on tags or prefixes during construction.
-- Integration with the `SchemaConverter` and `AnnotationMapper`.
+- Preserve the runtime input schema and map metadata through `AnnotationMapper`.
 
 **Excluded:**
 - Selection of the transport layer (handled by `TransportManager`).
@@ -28,7 +28,7 @@ The MCP Server Factory is the primary builder that constructs an MCP protocol se
 ## Core Responsibilities
 
 1. **Tool Builder** — Iterates over all discovered modules in the registry and generates an MCP-compliant `Tool` object for each.
-2. **Schema Inlining** — Leverages the `SchemaConverter` to ensure all tool schemas are self-contained and protocol-compliant.
+2. **Input Contract Preservation** — Copy the runtime input schema, retaining references and input semantics while normalizing only the MCP object root.
 3. **Annotation Synthesis** — Leverages the `AnnotationMapper` to attach protocol-level behavioral hints to each tool.
 4. **Handler Registration** — Defines and registers the `@server.list_tools()` and `@server.call_tool()` callbacks that connect the MCP protocol to internal apcore logic.
 
@@ -174,18 +174,43 @@ def serve(
 
 When `middlewares` is provided, the factory passes the list through to the `ExecutionRouter` (and the underlying apcore `Executor`), which installs them after all built-in middlewares registered by the factory (e.g., logging, tracing, approval enforcement, redaction). This ordering guarantee — **built-ins first, user middlewares after** — ensures user hooks observe already-redacted inputs and participate in error recovery without subverting safety-critical layers. When `middlewares` is `None` or empty, behavior is unchanged. Each entry must be an `apcore.middleware.Middleware` instance; passing non-`Middleware` values raises a configuration error before the server starts.
 
-### Strict Schema Sourcing
-When building MCP tools, the factory prefers `Registry.exportSchema(moduleId, strict=true)` if the registry exposes it, using the registry-provided strict schema directly as the MCP `inputSchema`. If the call fails or the registry does not implement `exportSchema`, the factory falls back to local strict post-processing via the Schema Converter (see `docs/features/schema-converter.md`, "Strict Mode for MCP"). Both upstream behaviors yield identical strict output — the registry path is preferred because it avoids a redundant walk.
+<a id="strict-schema-sourcing"></a>
 
-**Per-SDK status (v0.14.0):**
+### MCP Input Schema Contract
 
-| SDK | `Registry.exportSchema(strict=true)` | Behavior |
-|---|---|---|
-| Python | available on `apcore.registry.Registry` | Factory prefers registry path; falls back to local converter on miss/exception. |
-| TypeScript | available on `apcore-js`'s `Registry` interface | Factory prefers registry path; falls back to local converter. |
-| Rust | NOT available — apcore Rust's `Registry::export_schema(name)` does not accept a `strict` parameter | Factory always uses local strict post-processing via the Schema Converter. Aligning the Rust apcore Registry API with Python/TS is deferred (A-D-012, see CHANGELOG 0.14.0 deferred section — pending next apcore Rust crate release). |
+All three factories copy the descriptor's runtime input schema into MCP `inputSchema`,
+normalizing the root `type` to `object` only when the type is absent, is `object`, or is a valid type union containing `object`. Explicit types that exclude `object`, malformed type declarations and invalid type unions fail tool construction and are skipped during registry discovery. An empty schema becomes
+`{"type": "object", "properties": {}}`. This preserves the input semantics of an
+object-valued MCP call: optional properties remain optional, required properties
+remain required, explicit nullability and defaults remain unchanged, and undeclared
+`additionalProperties` remains permissive. Explicit `additionalProperties` values,
+local references, definitions, composition and extension keywords are retained.
+The advertised schema is an independent copy; modifying it cannot modify the registry.
 
-The output of all three SDKs is functionally equivalent strict JSON Schema; the divergence is purely in *which layer performs the strict transformation*, not in the result.
+The factory MUST NOT use `Registry.export_schema(..., strict=True)` or apply the
+standalone converter's strict transformation. OpenAI's strict parameters have a
+separate contract that makes optional properties required/nullable and removes
+defaults. It cannot be handed to MCP clients while execution validates the original
+schema. This resolves [#20](https://github.com/aiperceivable/apcore-mcp/issues/20).
+
+Python and TypeScript keep their existing factory `strict` and `registry` arguments
+for source compatibility; they no longer select an input-schema projection. Rust
+keeps `build_tool_with_registry` with the same behavior as `build_tool`. The Rust
+core does expose `Registry::export_schema(name, strict)` in apcore 0.32.1; the choice
+not to call it here is intentional, not an unavailable-API workaround.
+
+Discovery, preflight and execution use this same module contract. Routers forward
+arguments unchanged, including meaningful explicit null values. A non-nullable
+optional parameter may be omitted but cannot be sent as null. Defaults retain the
+runtime/module's original behavior; the bridge does not materialize defaults or
+remove null values. `validate_inputs` on and off must produce the same acceptance
+and successful result as direct execution for these cases.
+
+Conformance: `mcp_input_contract.json` covers 11 schemas and 27 inputs through real
+Registry, Executor and router paths with `validate_inputs` on and off in each SDK.
+An additional 17 shared root-schema cases verify rejection and object-containing unions.
+`tool_mapping.json` contract 2.0 pins the matching discovery projection. Explicit
+OpenAI exports and standalone SchemaConverter APIs retain their existing behavior.
 
 ## Constraints
 
@@ -354,7 +379,7 @@ The three Contract blocks below define each step. For HTTP transport, `build_ini
 - options: BuildToolsOptions, optional — fields:
   - tags: list[str] | None — filter modules by tags
   - prefix: str | None — filter modules by ID prefix
-  - strict: bool, default=True — when True, prefers registry.export_schema(strict=True); falls back to local SchemaConverter
+  - strict: bool, default=True — retained for compatibility; does not change MCP runtime input semantics
 
 ### Errors
 - ValueError — when a discovered module_id starts with reserved `__apcore_` prefix (hard config error, not silently skipped)
@@ -363,7 +388,7 @@ The three Contract blocks below define each step. For HTTP transport, `build_ini
 ### Returns
 - On success: list[Tool] — MCP Tool objects ready to register via `register_handlers`
 - On empty registry: empty list (warning logged)
-- Strict schema sourcing: tries `registry.export_schema(module_id, strict=True)` first; falls back to local SchemaConverter on miss/exception; Rust always uses local SchemaConverter (apcore Rust Registry lacks strict parameter)
+- MCP input schemas are copied from the runtime descriptor, with only the object root normalized; no strict export, null/default rewriting, reference inlining or additional-properties injection occurs.
 - **Since v0.19.0**: excludes the six read-only `system.health.*` / `system.usage.*` / `system.manifest.*` module IDs — these are projected as resources/resource-templates instead (see [System Module Projection](#system-module-projection-resources-vs-tools)). `system.control.*` modules are unaffected and still produce a Tool.
 
 ### Properties

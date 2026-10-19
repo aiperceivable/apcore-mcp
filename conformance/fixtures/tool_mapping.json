@@ -1,5 +1,5 @@
 {
-  "description": "apcore Module -> MCP Tool, as built by MCPServerFactory.build_tool(). Pins SRS section 7.1 'MCP Tool Definition': name equals the module id with dot notation preserved, inputSchema is the module input schema, annotations are the four MCP behavioural hints.",
+  "description": "MCP factories preserve the module runtime input contract, normalize only the object root, and keep dot-namespaced tool names and annotation hints. OpenAI strict projection belongs exclusively to the OpenAI converter.",
   "entry_point": "MCPServerFactory.build_tool(descriptor)",
   "spec": "srs-apcore-mcp.md#7.1",
   "test_cases": [
@@ -12,10 +12,16 @@
         "input_schema": {
           "type": "object",
           "properties": {
-            "to": { "type": "string" },
-            "subject": { "type": "string" }
+            "to": {
+              "type": "string"
+            },
+            "subject": {
+              "type": "string"
+            }
           },
-          "required": ["to"]
+          "required": [
+            "to"
+          ]
         },
         "annotations": {
           "readonly": false,
@@ -28,11 +34,16 @@
         "inputSchema": {
           "type": "object",
           "properties": {
-            "to": { "type": "string" },
-            "subject": { "type": "string" }
+            "to": {
+              "type": "string"
+            },
+            "subject": {
+              "type": "string"
+            }
           },
-          "required": ["to"],
-          "additionalProperties": false
+          "required": [
+            "to"
+          ]
         },
         "annotations": {
           "readOnlyHint": false,
@@ -72,8 +83,7 @@
               "x-llm-description": "Long AI-specific description",
               "x-sensitive": true
             }
-          },
-          "additionalProperties": false
+          }
         },
         "annotations": {
           "readOnlyHint": false,
@@ -91,5 +101,6 @@
       "status": "unimplemented_consistently",
       "description": "F-041 acceptance criteria 1 and 5 say mcp_-prefixed keys from annotations.extra reach the MCP tool description and the Explorer detail view. In all three bridges AnnotationMapper.to_description_suffix() is called only from the OpenAI converter, never from build_tool(), so the MCP description never carries them. The three implementations agree, so this is a spec-versus-implementation gap rather than cross-language divergence. Covered on the OpenAI path by openai_tool_mapping.json#mcp_prefix_reaches_the_description."
     }
-  ]
+  ],
+  "contract_version": "2.0"
 }

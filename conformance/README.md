@@ -12,7 +12,7 @@ Fixtures live in `fixtures/`. Nothing else in this directory is normative.
 
 | Fixture | Entry point | Cases | Pins |
 |---|---|---|---|
-| `tool_mapping.json` | `MCPServerFactory.build_tool(descriptor)` | 2 | apcore Module → MCP `Tool` (SRS §7.1). Basic field mapping, and that `x-` extensions survive into the MCP input schema. |
+| `tool_mapping.json` | `MCPServerFactory.build_tool(descriptor)` | 2 | apcore Module → MCP `Tool` (SRS §7.1). Contract 2.0: runtime input-schema preservation, basic field mapping, and that `x-` extensions survive into the MCP input schema. |
 | `openai_tool_mapping.json` | `OpenAIConverter.convert_descriptor(descriptor, embed_annotations, strict)` | 4 | apcore Module → OpenAI function definition (SRS §7.2). Module-ID normalization (`.` → `-`), `x-llm-description` priority, `x-` stripping, and `mcp_` extras reaching the description. |
 | `output_redaction.json` | `ExecutionRouter` output redaction | 2 | F-038. `x-sensitive` fields masked with `***REDACTED***`; unmarked fields left alone under an empty schema. |
 | `acl_config.json` | Config Bus `mcp.acl` loading | 11 + 21 error | How a raw `mcp.acl` JSON value becomes an ACL — null/empty means no ACL, `default_effect`, rule ordering, the `approval` key's closed value set, and PROTOCOL_SPEC §6.2.1's closed pattern-array shape with its normative validation order (`contract_version` 1.2). |
@@ -20,6 +20,22 @@ Fixtures live in `fixtures/`. Nothing else in this directory is normative.
 | `middleware_config.json` | Config Bus `mcp.middleware` loading | 6 + 4 error | How a raw `mcp.middleware` array becomes a middleware chain — supported types, per-type defaults, and order preservation. |
 | `openapi_backend.json` | `openapi_backend(spec, …)` | 9 + 3 config + 4 error | That the module IDs apcore-toolkit's scanner emits (in apcore's alphabet since toolkit 0.13.0) are registered as emitted and reach the MCP tool name and OpenAI function name unchanged, and that an ID the registry would still refuse is skipped with a WARNING before the writer; HTTP-method → `ToolAnnotations`; the path-typed handling of `spec` (URL verbatim, relative resolved against `project_root`, empty discarded); and the four fatal configurations (`contract_version` 2.0). See [`features/openapi-backend.md`](../docs/features/openapi-backend.md#conformance). |
 | `schema_converter.json` | `SchemaConverter.convert_input_schema(descriptor, strict=false)` | 8 + 1 error | `$ref` sibling-key preservation during inlining — a sibling written beside `$ref` (e.g. `x-sensitive`) MUST survive resolution and wins on key conflict, merged at every depth and across chained refs. A missing `$defs` entry still raises. Added 0.22.0 after apcore 0.31.0 (D-98/D-124) and apcore-toolkit 0.12.0 fixed the identical defect in their own resolvers. See [`features/schema-converter.md`](../docs/features/schema-converter.md#ref-sibling-keys-are-preserved). |
+
+### Runtime input contract
+
+Publish the canonical fixture changes before the SDK commits: SDK CI checks out
+this repository's default branch. A missing new fixture must fail CI rather than
+being replaced by private fixture copies or skipped tests.
+
+`mcp_input_contract.json` (contract 1.0) pins issue #20 using 11 schemas and 27
+valid/invalid inputs. All three SDK drivers use real registries and executors to
+compare discovery, preflight, direct execution and routing with `validate_inputs`
+on and off. Cases cover optional defaults, meaningful explicit null, required
+fields, nested task objects/arrays, free-form payloads, explicit additional-property
+policies and local references. Factory schema copies are tested for independence.
+An additional 17 shared root-schema cases cover explicit non-object types, invalid type declarations/unions, object-containing unions, discovery exclusion and agreement with native preflight.
+`tool_mapping.json` contract 2.0 removes implicit `additionalProperties: false`
+from MCP discovery expectations; standalone converter and OpenAI fixtures are unchanged.
 
 ### Driven by all three bridges
 

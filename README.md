@@ -202,6 +202,14 @@ apcore-mcp acts as a protocol-specific adapter on top of the apcore Registry, ma
 
 ---
 
+
+## MCP input contract
+
+MCP input schemas preserve the module runtime's optionality, nullable values,
+defaults, references and free-form object behavior across Python, TypeScript and
+Rust. Arguments pass through unchanged. OpenAI strict schema projection remains
+specific to OpenAI tool exports. See the [factory contract](docs/features/mcp-server-factory.md#mcp-input-schema-contract).
+
 ## Features & Specifications
 
 The project is architected as a set of modular features, each with its own specification to ensure consistency across languages:

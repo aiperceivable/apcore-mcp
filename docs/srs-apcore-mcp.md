@@ -202,6 +202,8 @@ apcore-mcp is the first adapter in a planned family (apcore-a2a is future). It d
 
 ### 3.1 FR-SCHEMA: Schema Conversion Requirements
 
+FR-SCHEMA-001 through FR-SCHEMA-003 describe the standalone SchemaConverter utility. MCPServerFactory discovery follows the runtime-preserving input contract in section 7.1 instead; it does not invoke that utility.
+
 ---
 
 #### FR-SCHEMA-001: Convert ModuleDescriptor input_schema to MCP inputSchema
@@ -304,11 +306,11 @@ apcore-mcp is the first adapter in a planned family (apcore-a2a is future). It d
 | **Priority** | P0 |
 | **Traces to** | F-008 |
 
-**Description:** The schema conversion for OpenAI `parameters` shall apply the same `$ref` inlining and `type: object` guarantee as MCP conversion (FR-SCHEMA-001 through FR-SCHEMA-003). The resulting schema shall be usable as the `"parameters"` value in an OpenAI tool definition.
+**Description:** The schema conversion for OpenAI `parameters` shall apply the same `$ref` inlining and `type: object` guarantee as the standalone SchemaConverter utility (FR-SCHEMA-001 through FR-SCHEMA-003). The resulting schema shall be usable as the `"parameters"` value in an OpenAI tool definition.
 
 **Input/Trigger:** A `ModuleDescriptor` with a populated `input_schema` dict.
 
-**Expected Output:** A JSON Schema dict identical to the MCP `inputSchema` output (same inlining and normalization rules apply).
+**Expected Output:** An explicitly converted OpenAI parameters schema. OpenAI conversion may inline references and apply strict-mode rules; MCP factory discovery independently preserves the runtime schema and does not share that projection.
 
 **Boundary Conditions:** Same as FR-SCHEMA-001.
 
@@ -1375,7 +1377,7 @@ preserved unchanged, including `keyword`.
 **Expected Output:** A list of `Tool` objects. Each tool has:
 - `name` equal to the apcore `module_id`.
 - `description` equal to the apcore module `description`.
-- `inputSchema` equal to the converted input schema (per FR-SCHEMA-001).
+- `inputSchema` is an independent copy of the runtime input schema, preserving references, optionality and defaults; normalize only an absent or object-compatible root type to object (section 7.1).
 - `annotations` equal to the mapped annotations (per FR-ANNOT-001 through FR-ANNOT-006).
 
 **Boundary Conditions:**
@@ -1384,7 +1386,7 @@ preserved unchanged, including `keyword`.
 - `get_definition()` returns `None` for a module_id (race condition): Skip that module, log warning.
 
 **Error Conditions:**
-- Schema conversion fails for one module: Skip that module, log warning, register remaining modules.
+- An input schema declaration is malformed or explicitly excludes an object root: Skip that module, log warning, register remaining modules.
 
 ---
 
@@ -4410,9 +4412,17 @@ apcore 0.30.0 is otherwise out of scope for this bridge: its §5.12.6 binding-di
 |-------|------|--------|-------------|
 | `name` | `str` | `ModuleDescriptor.module_id` | MCP tool name, equals the apcore module ID (dot notation preserved) |
 | `description` | `str` | `ModuleDescriptor.description` | Human-readable tool description |
-| `inputSchema` | `dict[str, Any]` | `ModuleDescriptor.input_schema` after $ref inlining | JSON Schema for tool input parameters |
+| `inputSchema` | `dict[str, Any]` | Independent copy of `ModuleDescriptor.input_schema`; only object root normalized | Preserve runtime optionality, nullability, defaults, references and additional-property policy |
 | `outputSchema` | `dict[str, Any]` | Object-root `ModuleDescriptor.output_schema`, preserving references and constraints | Optional; next SDK release, modern clients and synchronous tools only |
 | `annotations` | `ToolAnnotations` | `ModuleDescriptor.annotations` via AnnotationMapper | Behavioral hints: `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint` |
+
+**MCP input semantics (issue #20):** `inputSchema` is a deep copy of the descriptor's
+runtime schema with only its object root normalized. Preserve optionality, required
+checks, explicit nullability, defaults, free-form objects, explicit additional-property
+policies and local references. No OpenAI strict projection or null-placeholder
+translation is applied. Preflight and execution consume the unchanged arguments;
+turning `validate_inputs` on must not alter accepted inputs or successful results.
+See `features/mcp-server-factory.md` and `mcp_input_contract.json` for the contract.
 
 ### 7.2 OpenAI Tool Definition
 

@@ -92,8 +92,8 @@ The scope covers 46 PRD features (F-001..F-046) across the architectural compone
 | ErrorMapper          | Nothing                          | Real: pure function          |
 | ModuleIDNormalizer   | Nothing                          | Real: pure function          |
 | ExecutionRouter      | Mock: Executor.call_async()      | Real: ErrorMapper            |
-| MCPServerFactory     | Mock: mcp.server.lowlevel.Server | Real: SchemaConverter, AnnotationMapper |
-| OpenAIConverter      | Mock: Registry                   | Real: SchemaConverter, AnnotationMapper, IDNormalizer |
+| MCPServerFactory     | Mock: mcp.server.lowlevel.Server | Real: runtime schema copy, AnnotationMapper |
+| OpenAIConverter      | Mock: Registry                   | Real: runtime schema copy, AnnotationMapper, IDNormalizer |
 | TransportManager     | Mock: Server, stdio_server       | Real: validation logic       |
 | CLI Module           | Mock: Registry, serve()          | Real: argparse               |
 | RegistryListener     | Mock: Registry.on(), Factory     | Real: internal tools dict    |
@@ -3515,7 +3515,7 @@ Trace target: **F-042** / FR-EXTMGR-001..003.
 
 | ID | Description | Input | Expected Result | Status |
 |----|-------------|-------|-----------------|--------|
-| TC-EXTMGR-001 | factory uses default adapters when no overrides | `MCPServerFactory()` | built-in `SchemaConverter` / `AnnotationMapper` / `ErrorMapper` instances created | ACTIVE — FR-EXTMGR-002 |
+| TC-EXTMGR-001 | factory uses default adapters when no overrides | `MCPServerFactory()` | runtime input schema copied; built-in `AnnotationMapper` / `ErrorMapper` used | ACTIVE — FR-EXTMGR-002 |
 | TC-EXTMGR-002 | factory uses caller-supplied `schema_converter` | `MCPServerFactory(schema_converter=Custom())` | `Custom` instance used; default not constructed | DEFERRED — no such parameter in any SDK; see EB-2 |
 | TC-EXTMGR-003 | factory uses caller-supplied `annotation_mapper` | `MCPServerFactory(annotation_mapper=Custom())` | `Custom` instance used | DEFERRED — see EB-2 |
 | TC-EXTMGR-004 | factory uses caller-supplied `error_mapper` | `MCPServerFactory(error_mapper=Custom())` | `Custom` instance used | DEFERRED — see EB-2 |
@@ -3962,3 +3962,17 @@ available; a helper-only assertion does not establish wire compatibility.
 | Unknown vocabulary contains a colliding resource/anchor | It cannot shadow real schema definitions or weaken redaction |
 | Object root carries `x-sensitive` | Preserve the object-return contract; sensitivity is applied to nested fields |
 | Python JSON parser exceeds supported recursion depth | Advertised schema: payload-free error; no schema: unchanged text only |
+
+
+## MCP input contract regression — issue #20
+
+All SDKs drive `conformance/fixtures/mcp_input_contract.json` using a real Registry,
+Executor and ExecutionRouter. For every sample, compare the advertised schema's
+acceptance with native preflight and direct execution, then route the unchanged
+arguments with `validate_inputs` disabled and enabled. Successful results must equal
+direct execution; invalid inputs must remain rejected. Include optional/defaulted
+fields, nullable values with non-null defaults, required fields, nested task arrays,
+free-form payloads, declared additional-property restrictions and local references.
+Verify schema/input immutability and keep the existing OpenAI strict tests passing.
+
+Root-schema regressions additionally drive 17 shared `root_schema_cases`: reject explicit non-object roots and malformed type unions; accept absent types, object types and valid unions containing object. Rejected modules are omitted from discovery, accepted schemas agree with native preflight on object inputs, and registry declarations remain unchanged.
